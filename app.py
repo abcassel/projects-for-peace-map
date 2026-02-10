@@ -60,12 +60,12 @@ def load_data():
 df = load_data()
 
 # --- INITIALIZE SESSION STATE ---
+if 'selected_project_id' not in st.session_state:
+    st.session_state.selected_project_id = None
 if 'view_lat' not in st.session_state:
     st.session_state.view_lat = 20
 if 'view_lng' not in st.session_state:
     st.session_state.view_lng = 0
-if 'selected_project' not in st.session_state:
-    st.session_state.selected_project = None
 
 # --- SIDEBAR SEARCH & FILTERS ---
 st.sidebar.header("🔍 Search & Discover")
@@ -73,16 +73,16 @@ st.sidebar.header("🔍 Search & Discover")
 # 1. Keyword Search
 search_query = st.sidebar.text_input("Search by Project or Student Name")
 
-# 2. Institution Search (Right below keyword)
+# 2. Institution Search
 all_inst = sorted(df['Institution'].unique())
 selected_inst = st.sidebar.multiselect("Institution / School", all_inst)
 
 # 3. RANDOM PROJECT BUTTON
-if st.sidebar.button("🎲 Surprise Me! (Random Project)"):
+if st.sidebar.button("🎲 Surprise Me!"):
     random_row = df.sample(n=1).iloc[0]
+    st.session_state.selected_project_id = random_row['Title']
     st.session_state.view_lat = random_row['lat']
     st.session_state.view_lng = random_row['lng']
-    st.session_state.selected_project = random_row['Title']
 
 st.sidebar.markdown("---")
 # 4. Other Filters
@@ -120,59 +120,84 @@ globe_html = f"""
         (document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
-        .pointsData(gData)
-        .pointLat(d => d.lat)
-        .pointLng(d => d.lng)
-        .pointColor(d => d.Color)
-        .pointRadius(0.8)
-        .pointAltitude(0.01)
+        .htmlElementsData(gData)
+        .htmlElement(d => {{
+          const el = document.createElement('div');
+          // BRIGHTER GLOW CSS
+          el.innerHTML = `<div style="
+            width: 14px; 
+            height: 14px; 
+            background: ${{d.Color}}; 
+            border-radius: 50%; 
+            border: 2px solid white;
+            box-shadow: 0 0 20px 5px ${{d.Color}};
+            cursor: pointer;
+            transition: transform 0.2s;
+          " onmouseover="this.style.transform='scale(1.5)'" onmouseout="this.style.transform='scale(1)'"></div>`;
+          
+          el.onclick = () => {{
+             // Tell the Streamlit app which project was clicked
+             window.parent.postMessage({{type: 'streamlit:setComponentValue', value: d.Title}}, '*');
+          }};
+          return el;
+        }})
+        .htmlLat(d => d.lat)
+        .htmlLng(d => d.lng)
+        // TOOLTIP
         .pointLabel(d => `<div style="padding: 10px; background: white; color: black; border-radius: 8px; border: 1px solid #ddd; font-family: sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
                             <b style="color: ${{d.Color}};">${{d.Title}}</b><br/>
                             <small>${{d.Institution}}</small>
-                          </div>`)
-        .pointResolution(32)
-        // Pause on Hover
-        .onPointHover(point => {{
-          world.controls().autoRotate = !point;
-        }});
+                          </div>`);
 
       world.controls().autoRotate = true;
       world.controls().autoRotateSpeed = 0.6;
       
-      // Zoom to selected project if triggered by "Surprise Me"
-      world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1000);
+      // Pause on Hover
+      world.onHtmlElementHover(el => {{
+          world.controls().autoRotate = !el;
+      }});
+
+      // Zoom to selected project location
+      if ("{st.session_state.selected_project_id}" !== "None") {{
+          world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1000);
+      }}
     </script>
   </body>
 </html>
 """
 
-components.html(globe_html, height=600)
+# Render globe and capture clicks
+clicked_title = components.html(globe_html, height=600)
 
-# --- DISPLAY RANDOM SELECTION OR FULL LIST ---
-if st.session_state.selected_project:
-    st.success(f"Showing details for: **{st.session_state.selected_project}**")
-    proj_data = df[df['Title'] == st.session_state.selected_project].iloc[0]
-    with st.expander("📖 View Featured Project Story", expanded=True):
-        st.write(f"**🏫 Institution:** {proj_data['Institution']}")
-        st.write(f"**🤝 Members:** {proj_data['Members']}")
-        st.info(proj_data['Quote'])
-    if st.button("Close Featured Story"):
-        st.session_state.selected_project = None
-        st.rerun()
+# --- FEATURED PROJECT SECTION ---
+# If a project is selected via Surprise Me or Clicking the globe
+if st.session_state.selected_project_id:
+    project_row = df[df['Title'] == st.session_state.selected_project_id]
+    if not project_row.empty:
+        row = project_row.iloc[0]
+        st.markdown(f"### ✨ Featured Project: {row['Title']}")
+        with st.container():
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.write(f"**🏫 Institution:** {row['Institution']}")
+                st.write(f"**📍 Location:** {row['Location']}")
+                st.write(f"**🤝 Members:** {row['Members']}")
+            with col2:
+                st.info(f"**The Story:**\n\n{row['Quote']}")
+            if st.button("✖️ Clear Selection"):
+                st.session_state.selected_project_id = None
+                st.rerun()
 
 st.markdown("---")
 
-# --- PROJECT DETAILS LIST ---
-if not f_df.empty:
-    st.subheader("Explore Project Stories")
-    for _, row in f_df.iterrows():
-        with st.expander(f"📌 {row['Title']} ({row['Location']})"):
-            st.write(f"**🏫 Institution:** {row['Institution']}")
-            st.write(f"**🤝 Members:** {row['Members']}")
-            st.write(f"**🎯 Primary Issue:** {row['Issue Primary']}")
-            st.write(f"**🛠 Approach:** {', '.join(row['All_Approaches'])}")
-            st.markdown("---")
-            st.write(f"**📖 Project Summary:**")
-            st.write(row['Quote'])
-else:
-    st.warning("No projects found with those filters.")
+# --- FULL LIST VIEW ---
+st.subheader("📚 All Projects")
+for _, row in f_df.iterrows():
+    with st.expander(f"📌 {row['Title']} ({row['Location']})"):
+        st.write(f"**🏫 Institution:** {row['Institution']}")
+        st.write(f"**🤝 Members:** {row['Members']}")
+        st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
+        st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
+        st.markdown("---")
+        st.write(row['Quote'])
+
