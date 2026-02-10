@@ -1,5 +1,4 @@
 import streamlit as st
-import pd as pd
 import pandas as pd
 import json
 import random
@@ -26,6 +25,7 @@ REGION_COLORS = {
 
 @st.cache_data
 def load_data():
+    # Load your specific CSV
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Issue Secondary', 'Approach Primary', 'Approach Secondary', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
@@ -54,6 +54,7 @@ def load_data():
         'Approach Secondary': 'first', 'Quote': 'first'
     }).reset_index()
     
+    # Create alphanumeric ID for HTML anchoring
     project_df['anchor_id'] = project_df['Title'].str.replace(r'[^a-zA-Z0-9]', '', regex=True)
     project_df['All_Issues'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Issue Primary'], x['Issue Secondary']]))), axis=1)
     project_df['All_Approaches'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Approach Primary'], x['Approach Secondary']]))), axis=1)
@@ -106,8 +107,8 @@ globe_html = f"""
             box-shadow: 0 8px 25px rgba(0,0,0,0.12); display: none; overflow-y: auto;
             z-index: 1000; border: 1px solid #eee;
         }}
-        .close-btn {{ float: right; cursor: pointer; font-weight: bold; color: #aaa; }}
-        .card-title {{ font-weight: bold; color: #2c3e50; margin-bottom: 5px; }}
+        .close-btn {{ float: right; cursor: pointer; font-weight: bold; color: #aaa; font-size: 20px; }}
+        .card-title {{ font-weight: bold; color: #2c3e50; margin-bottom: 5px; font-size: 1.1em; }}
         .card-text {{ font-size: 0.85rem; color: #555; line-height: 1.4; }}
     </style>
   </head>
@@ -134,7 +135,7 @@ globe_html = f"""
             cardContent.innerHTML = `<div class="card-title">${{d.Title}}</div>
                                      <b>${{d.Institution}}</b><br/>
                                      <small>📍 ${{d.Location}}</small><br/><br/>
-                                     <i>"${{d.Quote.substring(0, 300)}}..."</i>`;
+                                     <i>"${{d.Quote.substring(0, 400)}}..."</i>`;
         }});
 
       world.controls().autoRotate = true;
@@ -147,9 +148,13 @@ globe_html = f"""
 
 components.html(globe_html, height=600)
 
-# JS Scroll Trigger
+# JS Scroll Trigger for the "Random" button
 if st.session_state.scroll_to:
-    st.components.v1.html(f"""<script>window.parent.document.getElementById('{st.session_state.scroll_to}').scrollIntoView({{behavior: 'smooth'}});</script>""", height=0)
+    components.html(f"""
+        <script>
+            window.parent.document.getElementById('{st.session_state.scroll_to}').scrollIntoView({{behavior: 'smooth'}});
+        </script>
+    """, height=0)
     st.session_state.scroll_to = None
 
 st.markdown("---")
@@ -163,4 +168,3 @@ for _, row in f_df.iterrows():
         st.write(f"**🤝 Members:** {row['Members']}")
         st.write(f"**🛠 Approach:** {', '.join(row['All_Approaches'])}")
         st.write(row['Quote'])
-
