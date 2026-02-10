@@ -143,7 +143,7 @@ globe_html = f"""
         .pointColor('Color')
         .pointRadius(0.7)
         .pointAltitude(0.01)
-        .pointLabel(d => `<div style="padding: 6px; background: white; border: 1px solid #ccc; border-radius: 4px;"><b>${{d.Title}}</b><br/>${{d.Institution}}</div>`)
+        .pointLabel(d => `<div style="padding: 4px; background: white; border: 1px solid #ccc; border-radius: 3px; color: black;"><b>${d.Title}</b></div>`)
         .onPointHover(point => {{
           world.controls().autoRotate = !point;
         }})
@@ -191,3 +191,4 @@ for _, row in f_df.iterrows():
         st.write(f"**🤝 Members:** {row['Members']}")
         st.write(f"**🛠 Approach:** {', '.join(row['All_Approaches'])}")
         st.write(row['Quote'])
+
