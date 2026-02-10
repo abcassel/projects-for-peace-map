@@ -9,7 +9,7 @@ st.set_page_config(page_title="Projects for Peace", layout="wide")
 
 # --- REGION MAPPING & COLORS ---
 REGION_MAP = {
-    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Burkina Faso", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Cacuaco", "Makeni", "Arusha", "Kigali", "Lagos", "Accra", "Addis Ababa", "Johannesburg", "Ethiopia", "Congo"],
+    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Burkina Faso", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Cacuaco", "Makeni", "Arusha", "Kigali", "Lagos", "Accra", "Addis Ababa", "Johannesburg"],
     "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Jaipur", "Islamabad", "Dhaka", "Tokyo", "Phnom Penh", "Jakarta", "Bali"],
     "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Epirus", "Bucharest", "Mainz", "Skopje", "Georgia"],
     "North America": ["United States", "USA", "Canada", "Mexico", "Toronto", "NYC", "New York", "Chicago", "Baltimore", "Oaxaca"],
@@ -54,12 +54,11 @@ def load_data():
     }).reset_index()
     
     project_df['All_Issues'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Issue Primary'], x['Issue Secondary']]))), axis=1)
-    project_df['All_Approaches'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Approach Primary'], x['Approach Secondary']]))), axis=1)
     return project_df.dropna(subset=['lat', 'lng'])
 
 df = load_data()
 
-# --- STATE MANAGEMENT ---
+# --- STATE ---
 if 'selected_project_id' not in st.session_state:
     st.session_state.selected_project_id = None
 if 'view_lat' not in st.session_state:
@@ -69,7 +68,7 @@ if 'view_lng' not in st.session_state:
 
 # --- SIDEBAR ---
 st.sidebar.header("🔍 Search & Discover")
-search_query = st.sidebar.text_input("Search by Project or Student Name")
+search_query = st.sidebar.text_input("Search Project/Student")
 all_inst = sorted(df['Institution'].unique())
 selected_inst = st.sidebar.multiselect("Institution / School", all_inst)
 
@@ -99,22 +98,7 @@ globe_html = f"""
 <html>
   <head>
     <script src="//unpkg.com/globe.gl"></script>
-    <style> 
-        body {{ margin: 0; background: linear-gradient(to bottom, #ffffff, #e3f2fd); overflow: hidden; font-family: sans-serif; }}
-        .custom-tooltip {{
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.95);
-            color: #333;
-            border-radius: 6px;
-            border: 1px solid #ddd;
-            font-size: 13px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            pointer-events: none;
-            position: absolute;
-            transform: translate(-50%, -120%);
-            z-index: 9999;
-        }}
-    </style>
+    <style> body {{ margin: 0; background: linear-gradient(to bottom, #ffffff, #e3f2fd); overflow: hidden; }} </style>
   </head>
   <body>
     <div id="globeViz"></div>
@@ -123,61 +107,36 @@ globe_html = f"""
       const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
-        .htmlElementsData(gData)
-        .htmlElement(d => {{
-          const el = document.createElement('div');
-          
-          // The Glowing Marker
-          el.innerHTML = `<div style="
-            width: 14px; 
-            height: 14px; 
-            background: ${{d.Color}}; 
-            border-radius: 50%; 
-            border: 2px solid white;
-            box-shadow: 0 0 20px 6px ${{d.Color}};
-            cursor: pointer;
-          "></div>`;
-          
-          // CLICK: Send project title to Streamlit
-          el.onclick = () => {{
-             window.parent.postMessage({{type: 'streamlit:setComponentValue', value: d.Title}}, '*');
-          }};
-          
-          // HOVER: Stop rotation and show label
-          el.onmouseenter = () => {{
-             world.controls().autoRotate = false;
-             const label = document.createElement('div');
-             label.className = 'custom-tooltip';
-             label.id = 'tt-' + d.lat.toString().replace('.', '');
-             label.innerHTML = `<b>${{d.Title}}</b><br/>${{d.Institution}}`;
-             el.appendChild(label);
-          }};
-
-          // LEAVE: Resume rotation and hide label
-          el.onmouseleave = () => {{
-             world.controls().autoRotate = true;
-             const label = el.querySelector('.custom-tooltip');
-             if (label) el.removeChild(label);
-          }};
-
-          return el;
+        .pointsData(gData)
+        .pointLat('lat')
+        .pointLng('lng')
+        .pointColor('Color')
+        .pointRadius(0.7)
+        .pointAltitude(0.01)
+        // HOVER LABEL
+        .pointLabel(d => `<div style="padding: 8px; background: white; color: black; border-radius: 4px; border: 1px solid #ccc; font-family: sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <b>${{d.Title}}</b><br/>${{d.Institution}}
+                          </div>`)
+        // STOP ON HOVER
+        .onPointHover(point => {{
+          world.controls().autoRotate = !point;
         }})
-        .htmlLat(d => d.lat)
-        .htmlLng(d => d.lng);
+        // CLICK TO SELECT
+        .onPointClick(d => {{
+          window.parent.postMessage({{type: 'streamlit:setComponentValue', value: d.Title}}, '*');
+        }});
 
       world.controls().autoRotate = true;
-      world.controls().autoRotateSpeed = 0.7;
+      world.controls().autoRotateSpeed = 0.6;
 
-      // Handle Surprise Me Zoom
       if ("{st.session_state.selected_project_id}" !== "None") {{
-          world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1200);
+          world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1000);
       }}
     </script>
   </body>
 </html>
 """
 
-# Capture clicking
 components.html(globe_html, height=600)
 
 # --- FEATURED SECTION ---
@@ -185,28 +144,28 @@ if st.session_state.selected_project_id:
     res = df[df['Title'] == st.session_state.selected_project_id]
     if not res.empty:
         row = res.iloc[0]
-        st.success(f"### ✨ Selected Project: {row['Title']}")
+        st.info(f"### ✨ Selected Project: {row['Title']}")
         col1, col2 = st.columns([1, 2])
         with col1:
             st.write(f"**🏫 Institution:** {row['Institution']}")
             st.write(f"**📍 Location:** {row['Location']}")
             st.write(f"**🤝 Members:** {row['Members']}")
-            if st.button("✖️ Reset View"):
+            if st.button("✖️ Clear & Resume Exploring"):
                 st.session_state.selected_project_id = None
                 st.rerun()
         with col2:
-            st.info(f"**The Story:**\n\n{row['Quote']}")
+            st.write(f"**The Story:**\n\n{row['Quote']}")
 
 st.markdown("---")
 
-# --- LIST ---
-st.subheader("📚 Explore All Projects")
+# --- LIST VIEW ---
+st.subheader("📚 All Projects")
 for _, row in f_df.iterrows():
     with st.expander(f"📌 {row['Title']} ({row['Location']})"):
         st.write(f"**🏫 Institution:** {row['Institution']}")
         st.write(f"**🤝 Members:** {row['Members']}")
-        st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
         st.write(row['Quote'])
+
 
 
 
