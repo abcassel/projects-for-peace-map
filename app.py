@@ -4,104 +4,81 @@ import json
 import streamlit.components.v1 as components
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Projects for Peace - Interactive Globe", layout="wide")
+st.set_page_config(page_title="Projects for Peace", layout="wide")
 
-# --- DATA LOADING & CLEANING ---
+# --- COLORS FOR RAINBOW EFFECT ---
+# Map common issues to friendly colors
+ISSUE_COLORS = {
+    "Youth development": "#FF6B6B",      # Coral
+    "Health & Well-being": "#FFD93D",    # Sunny Yellow
+    "Art & Design": "#FF8E3C",           # Orange
+    "Social Cohesion": "#6BCB77",        # Fresh Green
+    "Education Quality": "#4D96FF",      # Sky Blue
+    "Ag & Food Security": "#9ED5C5",     # Sage
+    "default": "#B197FC"                 # Soft Purple
+}
+
 @st.cache_data
 def load_data():
-    # Load your specific file
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
-    
-    # 1. Fill down project details for rows with multiple members
-    cols_to_fill = ['ID', 'Title', 'Institution', 'Location', 'Coordinates', 
-                    'Issue Primary', 'Issue Secondary', 'Approach Primary', 
-                    'Approach Secondary', 'Youth Focused?', 'Quote']
+    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 
+                    'Issue Primary', 'Approach Primary', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
-    # 2. Parse Coordinates
     def parse_coords(c):
         try:
             lat, lon = str(c).split(',')
             return float(lat.strip()), float(lon.strip())
-        except:
-            return None, None
+        except: return None, None
             
     df[['lat', 'lng']] = df['Coordinates'].apply(lambda x: pd.Series(parse_coords(x)))
     df = df.dropna(subset=['lat', 'lng'])
     
-    # 3. Consolidate members into a single string per project for searching
-    # We group by Title so all members of the same project appear in one pin
-    agg_dict = {
+    # Assign colors based on Issue
+    def get_color(issue):
+        return ISSUE_COLORS.get(issue, ISSUE_COLORS["default"])
+    
+    project_df = df.groupby('Title').agg({
         'Institution': 'first',
         'Members': lambda x: ', '.join(x.astype(str)),
         'Location': 'first',
         'lat': 'first',
         'lng': 'first',
         'Issue Primary': 'first',
-        'Issue Secondary': 'first',
-        'Approach Primary': 'first',
-        'Approach Secondary': 'first',
         'Quote': 'first'
-    }
-    project_df = df.groupby('Title').agg(agg_dict).reset_index()
+    }).reset_index()
     
-    # Create combined lists for filtering
-    project_df['All_Issues'] = project_df.apply(lambda x: [i for i in [x['Issue Primary'], x['Issue Secondary']] if pd.notna(i)], axis=1)
-    project_df['All_Approaches'] = project_df.apply(lambda x: [a for a in [x['Approach Primary'], x['Approach Secondary']] if pd.notna(a)], axis=1)
-    
+    project_df['color'] = project_df['Issue Primary'].apply(get_color)
     return project_df
 
 df = load_data()
 
-# --- SIDEBAR / FILTERS ---
-st.sidebar.title("🔍 Search Projects")
+# --- SIDEBAR FILTERS ---
+st.sidebar.title("🌈 Filter Projects")
+search_query = st.sidebar.text_input("Search by Keyword")
+selected_inst = st.sidebar.multiselect("School", sorted(df['Institution'].unique()))
 
-# Search by Keywords (Title or Members)
-search_query = st.sidebar.text_input("Search by Title or Member Name")
-
-# Dropdown Filters
-all_institutions = sorted(df['Institution'].unique())
-selected_inst = st.sidebar.multiselect("School / Institution", all_institutions)
-
-# Unique values for Issues and Approaches (flattening the lists)
-all_issues = sorted(list(set([item for sublist in df['All_Issues'] for item in sublist])))
-selected_issues = st.sidebar.multiselect("Issues Addressed", all_issues)
-
-all_approaches = sorted(list(set([item for sublist in df['All_Approaches'] for item in sublist])))
-selected_approaches = st.sidebar.multiselect("Project Approach", all_approaches)
-
-# --- FILTERING LOGIC ---
+# Filter Logic
 filtered_df = df.copy()
-
 if search_query:
-    filtered_df = filtered_df[
-        filtered_df['Title'].str.contains(search_query, case=False, na=False) | 
-        filtered_df['Members'].str.contains(search_query, case=False, na=False)
-    ]
-
+    filtered_df = filtered_df[filtered_df['Title'].str.contains(search_query, case=False)]
 if selected_inst:
     filtered_df = filtered_df[filtered_df['Institution'].isin(selected_inst)]
 
-if selected_issues:
-    filtered_df = filtered_df[filtered_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
+# --- THE GLOBE COMPONENT ---
+points_json = json.dumps(filtered_df.to_dict(orient='records'))
 
-if selected_approaches:
-    filtered_df = filtered_df[filtered_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_approaches))]
-
-# --- 3D GLOBE VISUALIZATION ---
-st.title("Projects for Peace 2025")
-st.write(f"Showing {len(filtered_df)} projects across the globe. Click a pin to see details.")
-
-# Convert dataframe to JSON for the Javascript Globe
-points_data = filtered_df.to_dict(orient='records')
-points_json = json.dumps(points_data)
-
-# HTML/JS for Globe.gl
 globe_html = f"""
 <html>
   <head>
     <script src="//unpkg.com/globe.gl"></script>
-    <style> body {{ margin: 0; background: #000; overflow: hidden; }} </style>
+    <style> 
+        body {{ 
+            margin: 0; 
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); /* Bright Friendly Background */
+            overflow: hidden; 
+        }} 
+    </style>
   </head>
   <body>
     <div id="globeViz"></div>
@@ -110,44 +87,42 @@ globe_html = f"""
 
       const world = Globe()
         (document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
-        .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg') // Brighter Earth
+        .backgroundColor('rgba(0,0,0,0)') // Transparent to show the CSS gradient
         .htmlElementsData(gData)
         .htmlElement(d => {{
           const el = document.createElement('div');
-          el.innerHTML = `<div style="width: 12px; height: 12px; background: #00ffcc; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 10px #00ffcc;"></div>`;
-          el.style.color = 'white';
-          el.style['pointer-events'] = 'auto';
-          el.onclick = () => window.parent.postMessage({{type: 'project_click', data: d}}, '*');
+          // Rainbow "Pulse" Pins
+          el.innerHTML = `<div style="
+            width: 16px; 
+            height: 16px; 
+            background: ${{d.color}}; 
+            border-radius: 50%; 
+            border: 2px solid white;
+            box-shadow: 0 0 15px ${{d.color}};
+            cursor: pointer;
+          "></div>`;
           return el;
         }})
         .htmlLat(d => d.lat)
-        .htmlLng(d => d.lng)
-        .pointLabel(d => `<b>${{d.Title}}</b><br/>${{d.Institution}}<br/>${{d.Location}}`);
+        .htmlLng(d => d.lng);
 
-      // Auto-rotate
       world.controls().autoRotate = true;
-      world.controls().autoRotateSpeed = 0.5;
-
+      world.controls().autoRotateSpeed = 0.8;
     </script>
   </body>
 </html>
 """
 
-components.html(globe_html, height=600)
+st.title("Projects for Peace 🌍")
+components.html(globe_html, height=650)
 
-# --- DETAIL PANEL ---
-# This section allows users to view the list of filtered projects in detail below the map
-if not filtered_df.empty:
-    st.subheader("Project Details")
-    for _, row in filtered_df.iterrows():
-        with st.expander(f"{row['Title']} ({row['Institution']})"):
-            st.markdown(f"**📍 Location:** {row['Location']}")
-            st.markdown(f"**👥 Members:** {row['Members']}")
-            st.markdown(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
-            st.markdown(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
-            if pd.notna(row['Quote']):
-                st.info(f"**Project Summary:**\n\n {row['Quote']}")
-else:
-    st.warning("No projects match your search criteria.")
+# --- LIST VIEW BELOW ---
+st.subheader("Explore Projects")
+cols = st.columns(2)
+for i, row in filtered_df.iterrows():
+    with cols[i % 2].expander(f"{row['Title']}"):
+        st.write(f"**School:** {row['Institution']}")
+        st.write(f"**Issue:** {row['Issue Primary']}")
+        st.write(f"**Members:** {row['Members']}")
+        st.caption(row['Quote'][:300] + "...")
