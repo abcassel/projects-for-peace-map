@@ -59,7 +59,7 @@ def load_data():
 
 df = load_data()
 
-# --- INITIALIZE SESSION STATE ---
+# --- SESSION STATE ---
 if 'selected_project_id' not in st.session_state:
     st.session_state.selected_project_id = None
 if 'view_lat' not in st.session_state:
@@ -67,17 +67,12 @@ if 'view_lat' not in st.session_state:
 if 'view_lng' not in st.session_state:
     st.session_state.view_lng = 0
 
-# --- SIDEBAR SEARCH & FILTERS ---
+# --- SIDEBAR ---
 st.sidebar.header("🔍 Search & Discover")
-
-# 1. Keyword Search
 search_query = st.sidebar.text_input("Search by Project or Student Name")
-
-# 2. Institution Search
 all_inst = sorted(df['Institution'].unique())
 selected_inst = st.sidebar.multiselect("Institution / School", all_inst)
 
-# 3. RANDOM PROJECT BUTTON
 if st.sidebar.button("🎲 Surprise Me!"):
     random_row = df.sample(n=1).iloc[0]
     st.session_state.selected_project_id = random_row['Title']
@@ -85,12 +80,11 @@ if st.sidebar.button("🎲 Surprise Me!"):
     st.session_state.view_lng = random_row['lng']
 
 st.sidebar.markdown("---")
-# 4. Other Filters
 selected_regions = st.sidebar.multiselect("World Region", sorted(df['Region'].unique()))
 selected_issues = st.sidebar.multiselect("Issue Area", sorted(list(set([i for sub in df['All_Issues'] for i in sub]))))
 selected_apps = st.sidebar.multiselect("Project Approach", sorted(list(set([a for sub in df['All_Approaches'] for a in sub]))))
 
-# --- FILTER LOGIC ---
+# --- FILTERING ---
 f_df = df.copy()
 if search_query:
     f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
@@ -99,7 +93,7 @@ if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
 if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
 if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
-# --- GLOBE VISUALIZATION ---
+# --- GLOBE ---
 st.title("Projects for Peace 🌍")
 points_json = json.dumps(f_df.to_dict(orient='records'))
 
@@ -115,49 +109,57 @@ globe_html = f"""
     <div id="globeViz"></div>
     <script>
       const gData = {points_json};
-
-      const world = Globe()
-        (document.getElementById('globeViz'))
+      const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
         .htmlElementsData(gData)
         .htmlElement(d => {{
           const el = document.createElement('div');
-          // BRIGHTER GLOW CSS
+          // RE-ADDING THE GLOWING PIN
           el.innerHTML = `<div style="
-            width: 14px; 
-            height: 14px; 
+            width: 15px; 
+            height: 15px; 
             background: ${{d.Color}}; 
             border-radius: 50%; 
             border: 2px solid white;
-            box-shadow: 0 0 20px 5px ${{d.Color}};
+            box-shadow: 0 0 25px 8px ${{d.Color}};
             cursor: pointer;
             transition: transform 0.2s;
-          " onmouseover="this.style.transform='scale(1.5)'" onmouseout="this.style.transform='scale(1)'"></div>`;
+          " class="globe-pin"></div>`;
           
+          // CLICK LOGIC
           el.onclick = () => {{
-             // Tell the Streamlit app which project was clicked
              window.parent.postMessage({{type: 'streamlit:setComponentValue', value: d.Title}}, '*');
           }};
+          
+          // MOUSE OVER PIN: STOP ROTATION + SHOW NAME
+          el.onmouseenter = () => {{
+             world.controls().autoRotate = false;
+             // Custom tooltip logic for HTML elements
+             const tooltip = document.createElement('div');
+             tooltip.id = 'custom-tooltip';
+             tooltip.innerHTML = `<div style="padding: 10px; background: white; color: black; border-radius: 8px; border: 1px solid #ddd; font-family: sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.15); position: absolute; bottom: 20px; left: 10px; white-space: nowrap; z-index: 1000;">
+                                    <b style="color: ${{d.Color}};">${{d.Title}}</b><br/>
+                                    <small>${{d.Institution}}</small>
+                                  </div>`;
+             el.appendChild(tooltip);
+          }};
+
+          // MOUSE LEAVE PIN: START ROTATION + HIDE NAME
+          el.onmouseleave = () => {{
+             world.controls().autoRotate = true;
+             const tt = el.querySelector('#custom-tooltip');
+             if(tt) el.removeChild(tt);
+          }};
+
           return el;
         }})
         .htmlLat(d => d.lat)
-        .htmlLng(d => d.lng)
-        // TOOLTIP
-        .pointLabel(d => `<div style="padding: 10px; background: white; color: black; border-radius: 8px; border: 1px solid #ddd; font-family: sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                            <b style="color: ${{d.Color}};">${{d.Title}}</b><br/>
-                            <small>${{d.Institution}}</small>
-                          </div>`);
+        .htmlLng(d => d.lng);
 
       world.controls().autoRotate = true;
       world.controls().autoRotateSpeed = 0.6;
-      
-      // Pause on Hover
-      world.onHtmlElementHover(el => {{
-          world.controls().autoRotate = !el;
-      }});
 
-      // Zoom to selected project location
       if ("{st.session_state.selected_project_id}" !== "None") {{
           world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1000);
       }}
@@ -166,17 +168,16 @@ globe_html = f"""
 </html>
 """
 
-# Render globe and capture clicks
-clicked_title = components.html(globe_html, height=600)
+# Handle the click event from JavaScript
+selected_from_globe = components.html(globe_html, height=600)
 
 # --- FEATURED PROJECT SECTION ---
-# If a project is selected via Surprise Me or Clicking the globe
 if st.session_state.selected_project_id:
     project_row = df[df['Title'] == st.session_state.selected_project_id]
     if not project_row.empty:
         row = project_row.iloc[0]
         st.markdown(f"### ✨ Featured Project: {row['Title']}")
-        with st.container():
+        with st.container(border=True):
             col1, col2 = st.columns([1, 2])
             with col1:
                 st.write(f"**🏫 Institution:** {row['Institution']}")
@@ -184,7 +185,7 @@ if st.session_state.selected_project_id:
                 st.write(f"**🤝 Members:** {row['Members']}")
             with col2:
                 st.info(f"**The Story:**\n\n{row['Quote']}")
-            if st.button("✖️ Clear Selection"):
+            if st.button("✖️ Clear Selection & Resume Exploring"):
                 st.session_state.selected_project_id = None
                 st.rerun()
 
@@ -200,4 +201,5 @@ for _, row in f_df.iterrows():
         st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
         st.markdown("---")
         st.write(row['Quote'])
+
 
