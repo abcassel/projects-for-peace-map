@@ -1,4 +1,5 @@
 import streamlit as st
+import pd as pd
 import pandas as pd
 import json
 import random
@@ -53,6 +54,7 @@ def load_data():
         'Approach Secondary': 'first', 'Quote': 'first'
     }).reset_index()
     
+    project_df['anchor_id'] = project_df['Title'].str.replace(r'[^a-zA-Z0-9]', '', regex=True)
     project_df['All_Issues'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Issue Primary'], x['Issue Secondary']]))), axis=1)
     project_df['All_Approaches'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Approach Primary'], x['Approach Secondary']]))), axis=1)
     return project_df.dropna(subset=['lat', 'lng'])
@@ -62,7 +64,7 @@ df = load_data()
 # --- STATE ---
 if 'view_lat' not in st.session_state: st.session_state.view_lat = 20
 if 'view_lng' not in st.session_state: st.session_state.view_lng = 0
-if 'random_id' not in st.session_state: st.session_state.random_id = 0
+if 'scroll_to' not in st.session_state: st.session_state.scroll_to = None
 
 # --- SIDEBAR ---
 st.sidebar.header("🔍 Search & Filter")
@@ -70,18 +72,14 @@ search_query = st.sidebar.text_input("Search Project/Student")
 selected_inst = st.sidebar.multiselect("Institution / School", sorted(df['Institution'].unique()))
 selected_regions = st.sidebar.multiselect("World Region", sorted(df['Region'].unique()))
 selected_issues = st.sidebar.multiselect("Issue Area", sorted(list(set([i for sub in df['All_Issues'] for i in sub]))))
-
-# ADDED BACK: Approach Filter
-all_apps = sorted(list(set([a for sub in df['All_Approaches'] for a in sub])))
-selected_apps = st.sidebar.multiselect("Project Approach", all_apps)
+selected_apps = st.sidebar.multiselect("Project Approach", sorted(list(set([a for sub in df['All_Approaches'] for a in sub]))))
 
 st.sidebar.markdown("---")
-# RENAMED & MOVED: Random Button
 if st.sidebar.button("🎲 Visit a Project at random"):
     random_row = df.sample(n=1).iloc[0]
     st.session_state.view_lat = random_row['lat']
     st.session_state.view_lng = random_row['lng']
-    st.session_state.random_id += 1 # Trigger JS update
+    st.session_state.scroll_to = random_row['anchor_id']
 
 # --- FILTERING ---
 f_df = df.copy()
@@ -103,30 +101,20 @@ globe_html = f"""
     <style> 
         body {{ margin: 0; background: linear-gradient(to bottom, #ffffff, #e3f2fd); overflow: hidden; font-family: sans-serif; }}
         #info-card {{
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            max-height: 80vh;
-            background: rgba(255, 255, 255, 0.98);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-            display: none;
-            overflow-y: auto;
-            z-index: 1000;
-            border: 1px solid #eee;
+            position: absolute; top: 20px; right: 20px; width: 280px; max-height: 70vh;
+            background: rgba(255, 255, 255, 0.98); padding: 18px; border-radius: 10px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12); display: none; overflow-y: auto;
+            z-index: 1000; border: 1px solid #eee;
         }}
-        .close-btn {{ float: right; cursor: pointer; font-size: 20px; color: #999; }}
-        .card-title {{ color: #2c3e50; font-weight: bold; font-size: 1.1em; margin-bottom: 8px; }}
-        .card-meta {{ font-size: 0.85em; color: #7f8c8d; margin-bottom: 12px; line-height: 1.4; }}
-        .card-quote {{ font-size: 0.9em; line-height: 1.5; color: #34495e; border-top: 1px solid #eee; pt: 10px; }}
+        .close-btn {{ float: right; cursor: pointer; font-weight: bold; color: #aaa; }}
+        .card-title {{ font-weight: bold; color: #2c3e50; margin-bottom: 5px; }}
+        .card-text {{ font-size: 0.85rem; color: #555; line-height: 1.4; }}
     </style>
   </head>
   <body>
     <div id="info-card">
-        <span class="close-btn" onclick="closeCard()">&times;</span>
-        <div id="card-content"></div>
+        <span class="close-btn" onclick="this.parentElement.style.display='none'">&times;</span>
+        <div id="card-content" class="card-text"></div>
     </div>
     <div id="globeViz"></div>
     <script>
@@ -138,56 +126,41 @@ globe_html = f"""
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
         .pointsData(gData)
-        .pointLat('lat')
-        .pointLng('lng')
-        .pointColor('Color')
-        .pointRadius(0.7)
-        .pointAltitude(0.01)
-        .pointLabel(d => `<div style="padding: 6px; background: white; border: 1px solid #ccc; border-radius: 4px;"><b>${{d.Title}}</b><br/>${{d.Institution}}</div>`)
-        .onPointHover(point => {{
-          world.controls().autoRotate = !point;
-        }})
+        .pointLat('lat').pointLng('lng').pointColor('Color').pointRadius(0.7).pointAltitude(0.01)
+        .pointLabel(d => `<div style="padding: 4px; background: white; border: 1px solid #ccc; border-radius: 3px;"><b>${{d.Title}}</b></div>`)
+        .onPointHover(point => {{ world.controls().autoRotate = !point; }})
         .onPointClick(d => {{
-          showCard(d);
+            infoCard.style.display = 'block';
+            cardContent.innerHTML = `<div class="card-title">${{d.Title}}</div>
+                                     <b>${{d.Institution}}</b><br/>
+                                     <small>📍 ${{d.Location}}</small><br/><br/>
+                                     <i>"${{d.Quote.substring(0, 300)}}..."</i>`;
         }});
 
       world.controls().autoRotate = true;
       world.controls().autoRotateSpeed = 0.6;
-
-      function showCard(d) {{
-          infoCard.style.display = 'block';
-          cardContent.innerHTML = `
-            <div class="card-title">${{d.Title}}</div>
-            <div class="card-meta">
-                📍 ${{d.Location}}<br/>
-                🏫 ${{d.Institution}}<br/>
-                🤝 ${{d.Members}}
-            </div>
-            <div class="card-quote">
-                <i>"${{d.Quote.substring(0, 500)}}..."</i>
-            </div>
-          `;
-      }}
-
-      function closeCard() {{
-          infoCard.style.display = 'none';
-      }}
-
-      // Handle Surprise Me movements
       world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1000);
     </script>
   </body>
 </html>
 """
 
-components.html(globe_html, height=650)
+components.html(globe_html, height=600)
 
-# --- FULL LIST VIEW BELOW ---
+# JS Scroll Trigger
+if st.session_state.scroll_to:
+    st.components.v1.html(f"""<script>window.parent.document.getElementById('{st.session_state.scroll_to}').scrollIntoView({{behavior: 'smooth'}});</script>""", height=0)
+    st.session_state.scroll_to = None
+
 st.markdown("---")
+
+# --- LIST VIEW ---
 st.subheader("📚 Explore All Project Descriptions")
 for _, row in f_df.iterrows():
+    st.markdown(f'<div id="{row["anchor_id"]}"></div>', unsafe_content_allowed=True)
     with st.expander(f"📌 {row['Title']} ({row['Location']})"):
         st.write(f"**🏫 Institution:** {row['Institution']}")
         st.write(f"**🤝 Members:** {row['Members']}")
         st.write(f"**🛠 Approach:** {', '.join(row['All_Approaches'])}")
         st.write(row['Quote'])
+
