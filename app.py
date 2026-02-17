@@ -8,12 +8,12 @@ st.set_page_config(page_title="Projects for Peace 2025", layout="wide")
 
 # --- REGION MAPPING & COLORS ---
 REGION_MAP = {
-    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Burkina Faso", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Cacuaco", "Makeni", "Arusha", "Kigali", "Lagos", "Accra", "Addis Ababa", "Johannesburg"],
-    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Jaipur", "Islamabad", "Dhaka", "Tokyo", "Phnom Penh", "Jakarta", "Bali"],
-    "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Epirus", "Bucharest", "Mainz", "Skopje", "Georgia"],
-    "North America": ["United States", "USA", "Canada", "Mexico", "Toronto", "NYC", "New York", "Chicago", "Baltimore", "Oaxaca"],
-    "South America": ["Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Medellin", "Rio de Janeiro", "Quito"],
-    "Oceania": ["Marshall Islands", "Kwajalein"]
+    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Burkina Faso", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi"],
+    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka"],
+    "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Georgia", "Armenia", "Kosovo", "Albania", "France", "Spain"],
+    "North America": ["United States", "USA", "Canada", "Mexico", "Guatemala", "Honduras", "Haiti", "Dominican Republic", "Jamaica", "Belize"],
+    "South America": ["Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Bolivia", "Chile", "Paraguay"],
+    "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"]
 }
 
 REGION_COLORS = {
@@ -25,8 +25,9 @@ REGION_COLORS = {
 @st.cache_data
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
-    # Added new columns to ffill list
-    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quote', 'Card Photo', 'Quote']
+    
+    # Updated to 'Pull Quotes' with an S
+    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Card Photo', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
     def parse_coords(c):
@@ -45,16 +46,16 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
-    # Aggregate data with Pull Quote and Photo
+    # Aggregate data
     project_df = df.groupby('Title').agg({
         'Institution': 'first', 
-        'Members': lambda x: ', '.join(x.astype(str)),
+        'Members': lambda x: ', '.join(x.astype(str).unique()),
         'Location': 'first', 
         'Region': 'first', 
         'Color': 'first',
         'lat': 'first', 
         'lng': 'first',
-        'Pull Quote': 'first',
+        'Pull Quotes': 'first', # Updated key
         'Card Photo': 'first',
         'Quote': 'first'
     }).reset_index()
@@ -65,7 +66,7 @@ def load_data():
 
 df = load_data()
 
-# --- SIDEBAR FILTERS (Random button removed) ---
+# --- SIDEBAR FILTERS ---
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 selected_inst = st.sidebar.multiselect("Institution / School", sorted(df['Institution'].unique()))
@@ -82,7 +83,7 @@ if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
 if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
 if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
-# --- GLOBE VISUALIZATION ---
+# --- GLOBE ---
 st.title("Projects for Peace 🌍")
 points_json = json.dumps(f_df.to_dict(orient='records'))
 
@@ -95,15 +96,15 @@ globe_html = f"""
         #info-card {{
             position: absolute; top: 20px; right: 20px; width: 350px; max-height: 85vh;
             background: rgba(255, 255, 255, 0.98); padding: 0; border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: none; overflow-y: auto;
-            z-index: 1000; border: 1px solid #eee;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2); display: none; overflow-y: auto;
+            z-index: 1000; border: 1px solid #ddd;
         }}
-        .card-img {{ width: 100%; height: 200px; object-fit: cover; border-top-left-radius: 12px; border-top-right-radius: 12px; }}
+        .card-img {{ width: 100%; height: 220px; object-fit: cover; border-top-left-radius: 12px; border-top-right-radius: 12px; }}
         .card-body {{ padding: 20px; }}
-        .close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; color: white; font-size: 24px; text-shadow: 0 0 5px rgba(0,0,0,0.5); z-index: 1001; }}
-        .card-title {{ font-weight: bold; color: black; margin-bottom: 5px; font-size: 1.2em; line-height: 1.2; }}
-        .card-meta {{ font-size: 0.85rem; color: black; margin-bottom: 12px; line-height: 1.4; }}
-        .card-quote {{ font-size: 0.95rem; color: black; font-style: italic; border-top: 1px solid #eee; padding-top: 12px; line-height: 1.5; }}
+        .close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; color: white; font-size: 28px; text-shadow: 0 0 8px rgba(0,0,0,0.8); z-index: 1001; }}
+        .card-title {{ font-weight: bold; color: black; margin-bottom: 8px; font-size: 1.3em; line-height: 1.2; }}
+        .card-meta {{ font-size: 0.9rem; color: black; margin-bottom: 15px; line-height: 1.5; }}
+        .card-quote {{ font-size: 1rem; color: black; font-style: italic; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; }}
     </style>
   </head>
   <body>
@@ -122,11 +123,11 @@ globe_html = f"""
         .backgroundColor('rgba(0,0,0,0)')
         .pointsData(gData)
         .pointLat('lat').pointLng('lng').pointColor('Color').pointRadius(0.8).pointAltitude(0.01)
-        .pointLabel(d => `<div style="padding: 6px; background: white; border: 1px solid #ccc; border-radius: 4px; color: black;"><b>${{d.Title}}</b></div>`)
+        .pointLabel(d => `<div style="padding: 6px; background: white; border: 1px solid #ccc; border-radius: 4px; color: black; font-weight: bold;">${{d.Title}}</div>`)
         .onPointHover(point => {{ world.controls().autoRotate = !point; }})
         .onPointClick(d => {{
             infoCard.style.display = 'block';
-            const photoHtml = d['Card Photo'] ? `<img src="${{d['Card Photo']}}" class="card-img">` : '<div style="height:20px;"></div>';
+            const photoHtml = d['Card Photo'] ? `<img src="${{d['Card Photo']}}" class="card-img">` : '<div style="height:40px; background:#f0f0f0;"></div>';
             cardContent.innerHTML = `
                 ${{photoHtml}}
                 <div class="card-body">
@@ -137,7 +138,7 @@ globe_html = f"""
                         🤝 ${{d.Members}}
                     </div>
                     <div class="card-quote">
-                        "${{d['Pull Quote']}}"
+                        "${{d['Pull Quotes']}}"
                     </div>
                 </div>
             `;
@@ -152,12 +153,18 @@ globe_html = f"""
 
 components.html(globe_html, height=650)
 
-# --- LIST VIEW ---
+# --- EXPANDABLE LIST VIEW ---
 st.markdown("---")
-st.subheader("📚 Full Project Descriptions")
+st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
-    with st.expander(f"📌 {row['Title']} ({row['Location']})"):
-        st.write(f"**🏫 Institution:** {row['Institution']}")
-        st.write(f"**🤝 Members:** {row['Members']}")
-        st.write(f"**🛠 Approach:** {', '.join(row['All_Approaches'])}")
-        st.write(row['Quote'])
+    with st.expander(f"📌 {row['Title']} — {row['Location']}"):
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            if pd.notna(row['Card Photo']):
+                st.image(row['Card Photo'], use_container_width=True)
+            st.write(f"**🏫 Institution:** {row['Institution']}")
+            st.write(f"**🤝 Members:** {row['Members']}")
+            st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
+        with col2:
+            st.markdown(f"***{row['Pull Quotes']}***")
+            st.write(row['Quote'])
