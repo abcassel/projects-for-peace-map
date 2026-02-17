@@ -24,10 +24,10 @@ REGION_COLORS = {
 
 @st.cache_data
 def load_data():
-    # Load your CSV file
+    # Ensure this matches your GitHub filename exactly
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # Using 'Pull Quotes' with an S as discussed
+    # Using 'Pull Quotes' (Plural)
     cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
@@ -60,8 +60,10 @@ def load_data():
         'Quote': 'first'
     }).reset_index()
     
-    project_df['All_Issues'] = df.groupby('Title')['Issue Primary'].apply(lambda x: list(set(filter(pd.notna, x))))
-    project_df['All_Approaches'] = df.groupby('Title')['Approach Primary'].apply(lambda x: list(set(filter(pd.notna, x))))
+    # Clean lists for issues and approaches
+    project_df['All_Issues'] = df.groupby('Title')['Issue Primary'].apply(lambda x: list(set([str(i).strip() for i in x if pd.notna(i)])))
+    project_df['All_Approaches'] = df.groupby('Title')['Approach Primary'].apply(lambda x: list(set([str(a).strip() for a in x if pd.notna(a)])))
+    
     return project_df.dropna(subset=['lat', 'lng'])
 
 df = load_data()
@@ -69,10 +71,17 @@ df = load_data()
 # --- SIDEBAR FILTERS ---
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
-selected_inst = st.sidebar.multiselect("Institution / School", sorted(df['Institution'].unique()))
-selected_regions = st.sidebar.multiselect("World Region", sorted(df['Region'].unique()))
-selected_issues = st.sidebar.multiselect("Issue Area", sorted(list(set([i for sub in df['All_Issues'] for i in sub]))))
-selected_apps = st.sidebar.multiselect("Project Approach", sorted(list(set([a for sub in df['All_Approaches'] for a in sub]))))
+
+# Bulletproof sorting for the dropdown menus
+unique_inst = sorted(list(set([str(x).strip() for x in df['Institution'].dropna() if str(x).strip() != ''])))
+unique_reg = sorted(list(set([str(x).strip() for x in df['Region'].dropna() if str(x).strip() != ''])))
+unique_issues = sorted(list(set([str(i).strip() for sub in df['All_Issues'] for i in sub if str(i).strip() != 'nan' and str(i).strip() != ''])))
+unique_apps = sorted(list(set([str(a).strip() for sub in df['All_Approaches'] for a in sub if str(a).strip() != 'nan' and str(a).strip() != ''])))
+
+selected_inst = st.sidebar.multiselect("Institution / School", unique_inst)
+selected_regions = st.sidebar.multiselect("World Region", unique_reg)
+selected_issues = st.sidebar.multiselect("Issue Area", unique_issues)
+selected_apps = st.sidebar.multiselect("Project Approach", unique_apps)
 
 # --- APPLY FILTERS ---
 f_df = df.copy()
@@ -83,7 +92,7 @@ if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
 if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
 if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
-# --- GLOBE SECTION ---
+# --- GLOBE VISUALIZATION ---
 st.title("Projects for Peace 🌍")
 points_json = json.dumps(f_df.to_dict(orient='records'))
 
@@ -147,7 +156,7 @@ globe_html = f"""
 
 components.html(globe_html, height=650)
 
-# --- LIST VIEW ---
+# --- EXPANDABLE LIST VIEW ---
 st.markdown("---")
 st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
@@ -155,4 +164,5 @@ for _, row in f_df.iterrows():
         st.markdown(f"***{row['Pull Quotes']}***")
         st.write(f"**🏫 Institution:** {row['Institution']}")
         st.write(f"**🤝 Members:** {row['Members']}")
+        st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
         st.write(row['Quote'])
