@@ -24,10 +24,11 @@ REGION_COLORS = {
 
 @st.cache_data
 def load_data():
+    # Load your CSV file
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # Updated to 'Pull Quotes' with an S
-    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Card Photo', 'Quote']
+    # Using 'Pull Quotes' with an S as discussed
+    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
     def parse_coords(c):
@@ -46,7 +47,7 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
-    # Aggregate data
+    # Aggregate data into one row per Project Title
     project_df = df.groupby('Title').agg({
         'Institution': 'first', 
         'Members': lambda x: ', '.join(x.astype(str).unique()),
@@ -55,8 +56,7 @@ def load_data():
         'Color': 'first',
         'lat': 'first', 
         'lng': 'first',
-        'Pull Quotes': 'first', # Updated key
-        'Card Photo': 'first',
+        'Pull Quotes': 'first',
         'Quote': 'first'
     }).reset_index()
     
@@ -74,7 +74,7 @@ selected_regions = st.sidebar.multiselect("World Region", sorted(df['Region'].un
 selected_issues = st.sidebar.multiselect("Issue Area", sorted(list(set([i for sub in df['All_Issues'] for i in sub]))))
 selected_apps = st.sidebar.multiselect("Project Approach", sorted(list(set([a for sub in df['All_Approaches'] for a in sub]))))
 
-# --- FILTER LOGIC ---
+# --- APPLY FILTERS ---
 f_df = df.copy()
 if search_query:
     f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
@@ -83,7 +83,7 @@ if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
 if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
 if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
-# --- GLOBE ---
+# --- GLOBE SECTION ---
 st.title("Projects for Peace 🌍")
 points_json = json.dumps(f_df.to_dict(orient='records'))
 
@@ -94,15 +94,13 @@ globe_html = f"""
     <style> 
         body {{ margin: 0; background: linear-gradient(to bottom, #ffffff, #e3f2fd); overflow: hidden; font-family: sans-serif; }}
         #info-card {{
-            position: absolute; top: 20px; right: 20px; width: 350px; max-height: 85vh;
-            background: rgba(255, 255, 255, 0.98); padding: 0; border-radius: 12px;
+            position: absolute; top: 20px; right: 20px; width: 300px; max-height: 80vh;
+            background: rgba(255, 255, 255, 0.98); padding: 20px; border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2); display: none; overflow-y: auto;
             z-index: 1000; border: 1px solid #ddd;
         }}
-        .card-img {{ width: 100%; height: 220px; object-fit: cover; border-top-left-radius: 12px; border-top-right-radius: 12px; }}
-        .card-body {{ padding: 20px; }}
-        .close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; color: white; font-size: 28px; text-shadow: 0 0 8px rgba(0,0,0,0.8); z-index: 1001; }}
-        .card-title {{ font-weight: bold; color: black; margin-bottom: 8px; font-size: 1.3em; line-height: 1.2; }}
+        .close-btn {{ float: right; cursor: pointer; font-weight: bold; color: #888; font-size: 24px; }}
+        .card-title {{ font-weight: bold; color: black; margin-bottom: 8px; font-size: 1.2em; line-height: 1.2; }}
         .card-meta {{ font-size: 0.9rem; color: black; margin-bottom: 15px; line-height: 1.5; }}
         .card-quote {{ font-size: 1rem; color: black; font-style: italic; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.6; }}
     </style>
@@ -127,19 +125,15 @@ globe_html = f"""
         .onPointHover(point => {{ world.controls().autoRotate = !point; }})
         .onPointClick(d => {{
             infoCard.style.display = 'block';
-            const photoHtml = d['Card Photo'] ? `<img src="${{d['Card Photo']}}" class="card-img">` : '<div style="height:40px; background:#f0f0f0;"></div>';
             cardContent.innerHTML = `
-                ${{photoHtml}}
-                <div class="card-body">
-                    <div class="card-title">${{d.Title}}</div>
-                    <div class="card-meta">
-                        <b>${{d.Institution}}</b><br/>
-                        📍 ${{d.Location}}<br/>
-                        🤝 ${{d.Members}}
-                    </div>
-                    <div class="card-quote">
-                        "${{d['Pull Quotes']}}"
-                    </div>
+                <div class="card-title">${{d.Title}}</div>
+                <div class="card-meta">
+                    <b>${{d.Institution}}</b><br/>
+                    📍 ${{d.Location}}<br/>
+                    🤝 ${{d.Members}}
+                </div>
+                <div class="card-quote">
+                    "${{d['Pull Quotes']}}"
                 </div>
             `;
         }});
@@ -153,18 +147,12 @@ globe_html = f"""
 
 components.html(globe_html, height=650)
 
-# --- EXPANDABLE LIST VIEW ---
+# --- LIST VIEW ---
 st.markdown("---")
 st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
     with st.expander(f"📌 {row['Title']} — {row['Location']}"):
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            if pd.notna(row['Card Photo']):
-                st.image(row['Card Photo'], use_container_width=True)
-            st.write(f"**🏫 Institution:** {row['Institution']}")
-            st.write(f"**🤝 Members:** {row['Members']}")
-            st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
-        with col2:
-            st.markdown(f"***{row['Pull Quotes']}***")
-            st.write(row['Quote'])
+        st.markdown(f"***{row['Pull Quotes']}***")
+        st.write(f"**🏫 Institution:** {row['Institution']}")
+        st.write(f"**🤝 Members:** {row['Members']}")
+        st.write(row['Quote'])
