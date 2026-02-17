@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 import json
-import random
 import streamlit.components.v1 as components
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Projects for Peace", layout="wide")
+st.set_page_config(page_title="Projects for Peace 2025", layout="wide")
 
 # --- REGION MAPPING & COLORS ---
 REGION_MAP = {
@@ -26,7 +25,8 @@ REGION_COLORS = {
 @st.cache_data
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
-    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Issue Secondary', 'Approach Primary', 'Approach Secondary', 'Quote']
+    # Added new columns to ffill list
+    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quote', 'Card Photo', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
     def parse_coords(c):
@@ -45,45 +45,35 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
+    # Aggregate data with Pull Quote and Photo
     project_df = df.groupby('Title').agg({
-        'Institution': 'first', 'Members': lambda x: ', '.join(x.astype(str)),
-        'Location': 'first', 'Region': 'first', 'Color': 'first',
-        'lat': 'first', 'lng': 'first', 'Issue Primary': 'first',
-        'Issue Secondary': 'first', 'Approach Primary': 'first',
-        'Approach Secondary': 'first', 'Quote': 'first'
+        'Institution': 'first', 
+        'Members': lambda x: ', '.join(x.astype(str)),
+        'Location': 'first', 
+        'Region': 'first', 
+        'Color': 'first',
+        'lat': 'first', 
+        'lng': 'first',
+        'Pull Quote': 'first',
+        'Card Photo': 'first',
+        'Quote': 'first'
     }).reset_index()
     
-    project_df['All_Issues'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Issue Primary'], x['Issue Secondary']]))), axis=1)
-    project_df['All_Approaches'] = project_df.apply(lambda x: list(set(filter(pd.notna, [x['Approach Primary'], x['Approach Secondary']]))), axis=1)
+    project_df['All_Issues'] = df.groupby('Title')['Issue Primary'].apply(lambda x: list(set(filter(pd.notna, x))))
+    project_df['All_Approaches'] = df.groupby('Title')['Approach Primary'].apply(lambda x: list(set(filter(pd.notna, x))))
     return project_df.dropna(subset=['lat', 'lng'])
 
 df = load_data()
 
-# --- STATE ---
-if 'view_lat' not in st.session_state: st.session_state.view_lat = 20
-if 'view_lng' not in st.session_state: st.session_state.view_lng = 0
-if 'random_id' not in st.session_state: st.session_state.random_id = 0
-
-# --- SIDEBAR ---
+# --- SIDEBAR FILTERS (Random button removed) ---
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 selected_inst = st.sidebar.multiselect("Institution / School", sorted(df['Institution'].unique()))
 selected_regions = st.sidebar.multiselect("World Region", sorted(df['Region'].unique()))
 selected_issues = st.sidebar.multiselect("Issue Area", sorted(list(set([i for sub in df['All_Issues'] for i in sub]))))
+selected_apps = st.sidebar.multiselect("Project Approach", sorted(list(set([a for sub in df['All_Approaches'] for a in sub]))))
 
-# ADDED BACK: Approach Filter
-all_apps = sorted(list(set([a for sub in df['All_Approaches'] for a in sub])))
-selected_apps = st.sidebar.multiselect("Project Approach", all_apps)
-
-st.sidebar.markdown("---")
-# RENAMED & MOVED: Random Button
-if st.sidebar.button("🎲 Visit a Project at random"):
-    random_row = df.sample(n=1).iloc[0]
-    st.session_state.view_lat = random_row['lat']
-    st.session_state.view_lng = random_row['lng']
-    st.session_state.random_id += 1 # Trigger JS update
-
-# --- FILTERING ---
+# --- FILTER LOGIC ---
 f_df = df.copy()
 if search_query:
     f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
@@ -92,7 +82,7 @@ if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
 if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
 if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
-# --- GLOBE ---
+# --- GLOBE VISUALIZATION ---
 st.title("Projects for Peace 🌍")
 points_json = json.dumps(f_df.to_dict(orient='records'))
 
@@ -103,29 +93,22 @@ globe_html = f"""
     <style> 
         body {{ margin: 0; background: linear-gradient(to bottom, #ffffff, #e3f2fd); overflow: hidden; font-family: sans-serif; }}
         #info-card {{
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            max-height: 80vh;
-            background: rgba(255, 255, 255, 0.98);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-            display: none;
-            overflow-y: auto;
-            z-index: 1000;
-            border: 1px solid #eee;
+            position: absolute; top: 20px; right: 20px; width: 350px; max-height: 85vh;
+            background: rgba(255, 255, 255, 0.98); padding: 0; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: none; overflow-y: auto;
+            z-index: 1000; border: 1px solid #eee;
         }}
-        .close-btn {{ float: right; cursor: pointer; font-size: 20px; color: #999; }}
-        .card-title {{ color: #2c3e50; font-weight: bold; font-size: 1.1em; margin-bottom: 8px; }}
-        .card-meta {{ font-size: 0.85em; color: #7f8c8d; margin-bottom: 12px; line-height: 1.4; }}
-        .card-quote {{ font-size: 0.9em; line-height: 1.5; color: #34495e; border-top: 1px solid #eee; pt: 10px; }}
+        .card-img {{ width: 100%; height: 200px; object-fit: cover; border-top-left-radius: 12px; border-top-right-radius: 12px; }}
+        .card-body {{ padding: 20px; }}
+        .close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; color: white; font-size: 24px; text-shadow: 0 0 5px rgba(0,0,0,0.5); z-index: 1001; }}
+        .card-title {{ font-weight: bold; color: black; margin-bottom: 5px; font-size: 1.2em; line-height: 1.2; }}
+        .card-meta {{ font-size: 0.85rem; color: black; margin-bottom: 12px; line-height: 1.4; }}
+        .card-quote {{ font-size: 0.95rem; color: black; font-style: italic; border-top: 1px solid #eee; padding-top: 12px; line-height: 1.5; }}
     </style>
   </head>
   <body>
     <div id="info-card">
-        <span class="close-btn" onclick="closeCard()">&times;</span>
+        <span class="close-btn" onclick="this.parentElement.style.display='none'">&times;</span>
         <div id="card-content"></div>
     </div>
     <div id="globeViz"></div>
@@ -138,43 +121,30 @@ globe_html = f"""
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
         .pointsData(gData)
-        .pointLat('lat')
-        .pointLng('lng')
-        .pointColor('Color')
-        .pointRadius(0.7)
-        .pointAltitude(0.01)
-        .pointLabel(d => `<div style="padding: 6px; background: white; border: 1px solid #ccc; border-radius: 3px; color: black;"><b>${{d.Title}}</b><br/>${{d.Institution}}</div>`)
-        .onPointHover(point => {{
-          world.controls().autoRotate = !point;
-        }})
+        .pointLat('lat').pointLng('lng').pointColor('Color').pointRadius(0.8).pointAltitude(0.01)
+        .pointLabel(d => `<div style="padding: 6px; background: white; border: 1px solid #ccc; border-radius: 4px; color: black;"><b>${{d.Title}}</b></div>`)
+        .onPointHover(point => {{ world.controls().autoRotate = !point; }})
         .onPointClick(d => {{
-          showCard(d);
+            infoCard.style.display = 'block';
+            const photoHtml = d['Card Photo'] ? `<img src="${{d['Card Photo']}}" class="card-img">` : '<div style="height:20px;"></div>';
+            cardContent.innerHTML = `
+                ${{photoHtml}}
+                <div class="card-body">
+                    <div class="card-title">${{d.Title}}</div>
+                    <div class="card-meta">
+                        <b>${{d.Institution}}</b><br/>
+                        📍 ${{d.Location}}<br/>
+                        🤝 ${{d.Members}}
+                    </div>
+                    <div class="card-quote">
+                        "${{d['Pull Quote']}}"
+                    </div>
+                </div>
+            `;
         }});
 
       world.controls().autoRotate = true;
-      world.controls().autoRotateSpeed = 0.6;
-
-      function showCard(d) {{
-          infoCard.style.display = 'block';
-          cardContent.innerHTML = `
-            <div class="card-title">${{d.Title}}</div>
-            <div class="card-meta">
-                📍 ${{d.Location}}<br/>
-                🏫 ${{d.Institution}}<br/>
-                🤝 ${{d.Members}}
-            </div>
-            <div class="card-quote">
-                <i>"${{d.Quote.substring(0, 500)}}..."</i>
-            </div>
-          `;
-      }}
-
-      function closeCard() {{
-          infoCard.style.display = 'none';
-      }}
-
-      // Handle Surprise Me movements
-      world.pointOfView({{ lat: {st.session_state.view_lat}, lng: {st.session_state.view_lng}, altitude: 1.8 }}, 1000);
+      world.controls().autoRotateSpeed = 0.5;
     </script>
   </body>
 </html>
@@ -182,15 +152,12 @@ globe_html = f"""
 
 components.html(globe_html, height=650)
 
-# --- FULL LIST VIEW BELOW ---
+# --- LIST VIEW ---
 st.markdown("---")
-st.subheader("📚 Explore All Project Descriptions")
+st.subheader("📚 Full Project Descriptions")
 for _, row in f_df.iterrows():
     with st.expander(f"📌 {row['Title']} ({row['Location']})"):
         st.write(f"**🏫 Institution:** {row['Institution']}")
         st.write(f"**🤝 Members:** {row['Members']}")
         st.write(f"**🛠 Approach:** {', '.join(row['All_Approaches'])}")
         st.write(row['Quote'])
-
-
-
