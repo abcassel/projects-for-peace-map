@@ -24,13 +24,13 @@ REGION_COLORS = {
 
 @st.cache_data
 def load_data():
-    # Ensure this matches your GitHub filename exactly
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # Using 'Pull Quotes' (Plural)
-    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
+    # Fill merged cells
+    cols_to_fill = ['Title', 'Institution', 'Location', 'Coordinates', 'Issue Primary', 'Issue Secondary', 'Approach Primary', 'Approach Secondary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
+    # Coordinates Parser
     def parse_coords(c):
         try:
             lat, lon = str(c).split(',')
@@ -38,6 +38,7 @@ def load_data():
         except: return None, None
     df[['lat', 'lng']] = df['Coordinates'].apply(lambda x: pd.Series(parse_coords(x)))
     
+    # Region Logic
     def get_region(loc):
         loc_str = str(loc)
         for region, keywords in REGION_MAP.items():
@@ -47,7 +48,15 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
-    # Aggregate data into one row per Project Title
+    # Create normalized list of Issues/Approaches (Combining Primary & Secondary)
+    def clean_tags(row, col_p, col_s):
+        tags = [str(row[col_p]), str(row[col_s])]
+        return list(set([t.strip().title() for t in tags if pd.notna(t) and str(t).lower() != 'nan' and t.strip() != '']))
+
+    df['Issues_List'] = df.apply(lambda r: clean_tags(r, 'Issue Primary', 'Issue Secondary'), axis=1)
+    df['Apps_List'] = df.apply(lambda r: clean_tags(r, 'Approach Primary', 'Approach Secondary'), axis=1)
+
+    # Aggregate by Title
     project_df = df.groupby('Title').agg({
         'Institution': 'first', 
         'Members': lambda x: ', '.join(x.astype(str).unique()),
@@ -60,9 +69,9 @@ def load_data():
         'Quote': 'first'
     }).reset_index()
     
-    # Clean lists for issues and approaches
-    project_df['All_Issues'] = df.groupby('Title')['Issue Primary'].apply(lambda x: list(set([str(i).strip() for i in x if pd.notna(i)])))
-    project_df['All_Approaches'] = df.groupby('Title')['Approach Primary'].apply(lambda x: list(set([str(a).strip() for a in x if pd.notna(a)])))
+    # Merge all unique tags for the filtered project
+    project_df['All_Issues'] = df.groupby('Title')['Issues_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
+    project_df['All_Approaches'] = df.groupby('Title')['Apps_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
     
     return project_df.dropna(subset=['lat', 'lng'])
 
@@ -72,18 +81,22 @@ df = load_data()
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 
-# Bulletproof sorting for the dropdown menus
-unique_inst = sorted(list(set([str(x).strip() for x in df['Institution'].dropna() if str(x).strip() != ''])))
-unique_reg = sorted(list(set([str(x).strip() for x in df['Region'].dropna() if str(x).strip() != ''])))
-unique_issues = sorted(list(set([str(i).strip() for sub in df['All_Issues'] for i in sub if str(i).strip() != 'nan' and str(i).strip() != ''])))
-unique_apps = sorted(list(set([str(a).strip() for sub in df['All_Approaches'] for a in sub if str(a).strip() != 'nan' and str(a).strip() != ''])))
+# Robust unique value collectors for filters
+def get_filter_options(series_of_lists):
+    flat_list = [str(item) for sublist in series_of_lists for item in sublist if item]
+    return sorted(list(set(flat_list)))
+
+unique_inst = sorted([str(x) for x in df['Institution'].unique() if pd.notna(x)])
+unique_reg = sorted([str(x) for x in df['Region'].unique() if pd.notna(x)])
+unique_issues = get_filter_options(df['All_Issues'])
+unique_apps = get_filter_options(df['All_Approaches'])
 
 selected_inst = st.sidebar.multiselect("Institution / School", unique_inst)
 selected_regions = st.sidebar.multiselect("World Region", unique_reg)
 selected_issues = st.sidebar.multiselect("Issue Area", unique_issues)
 selected_apps = st.sidebar.multiselect("Project Approach", unique_apps)
 
-# --- APPLY FILTERS ---
+# --- FILTER LOGIC ---
 f_df = df.copy()
 if search_query:
     f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
@@ -92,7 +105,7 @@ if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
 if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
 if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
-# --- GLOBE VISUALIZATION ---
+# --- GLOBE ---
 st.title("Projects for Peace 🌍")
 points_json = json.dumps(f_df.to_dict(orient='records'))
 
@@ -156,7 +169,7 @@ globe_html = f"""
 
 components.html(globe_html, height=650)
 
-# --- EXPANDABLE LIST VIEW ---
+# --- LIST VIEW ---
 st.markdown("---")
 st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
