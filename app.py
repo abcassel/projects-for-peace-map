@@ -77,29 +77,28 @@ df = load_data()
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 
-# Helper to get clean, unique, sorted lists for the dropdowns
+# Robust unique value collectors for filters
 def get_filter_options(series_of_lists):
-    flat_list = [str(item) for sublist in series_of_lists for item in sublist if item]
+    flat_list = []
+    for sublist in series_of_lists:
+        if isinstance(sublist, (list, iter)):
+            for item in sublist:
+                val = str(item).strip()
+                if val and val.lower() != 'nan':
+                    flat_list.append(val)
     return sorted(list(set(flat_list)))
 
-unique_inst = sorted([str(x) for x in df['Institution'].unique() if pd.notna(x)])
-unique_reg = sorted([str(x) for x in df['Region'].unique() if pd.notna(x)])
+# Collect options for dropdowns
+unique_inst = sorted([str(x).strip() for x in df['Institution'].unique() if pd.notna(x) and str(x).strip() != ''])
+unique_reg = sorted([str(x).strip() for x in df['Region'].unique() if pd.notna(x) and str(x).strip() != ''])
 unique_issues = get_filter_options(df['All_Issues'])
 unique_apps = get_filter_options(df['All_Approaches'])
 
+# Sidebar Selectors
 selected_inst = st.sidebar.multiselect("Institution / School", unique_inst)
 selected_regions = st.sidebar.multiselect("World Region", unique_reg)
 selected_issues = st.sidebar.multiselect("Issue Area", unique_issues)
 selected_apps = st.sidebar.multiselect("Project Approach", unique_apps)
-
-# --- APPLY FILTERS ---
-f_df = df.copy()
-if search_query:
-    f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
-if selected_regions: f_df = f_df[f_df['Region'].isin(selected_regions)]
-if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
-if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
-if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
 
 # --- GLOBE VISUALIZATION ---
 st.title("Projects for Peace 🌍")
@@ -179,3 +178,4 @@ for _, row in f_df.iterrows():
         st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
         if pd.notna(row['Quote']) and str(row['Quote']) != 'nan':
             st.write(row['Quote'])
+
