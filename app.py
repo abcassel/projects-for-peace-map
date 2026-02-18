@@ -25,9 +25,12 @@ REGION_COLORS = {
 @st.cache_data
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
+    
+    # 1. Standardize and Fill
     cols_to_fill = ['Title', 'Institution', 'Location', 'Latitude', 'Longitude', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
+    # 2. Region Mapping
     def get_region(loc):
         loc_str = str(loc)
         for region, keywords in REGION_MAP.items():
@@ -37,16 +40,18 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
+    # 3. Clean Individual Tags
     def clean_tags(row, col_p, col_s):
         tags = [str(row[col_p]), str(row[col_s])]
-        return list(set([t.strip().title() for t in tags if pd.notna(t) and str(t).lower() != 'nan' and t.strip() != '']))
+        return [t.strip().title() for t in tags if pd.notna(t) and str(t).lower() != 'nan' and t.strip() != '']
 
     df['Issues_List'] = df.apply(lambda r: clean_tags(r, 'Issue Primary', 'Issue Secondary'), axis=1)
     df['Apps_List'] = df.apply(lambda r: clean_tags(r, 'Approach Primary', 'Approach Secondary'), axis=1)
 
+    # 4. Aggregate by Project Title
     project_df = df.groupby('Title').agg({
         'Institution': 'first', 
-        'Members': lambda x: ', '.join(x.astype(str).unique()),
+        'Members': lambda x: ', '.join([str(m) for m in x.unique() if pd.notna(m)]),
         'Location': 'first', 
         'Region': 'first', 
         'Color': 'first',
@@ -56,9 +61,15 @@ def load_data():
         'Quote': 'first'
     }).reset_index()
     
+    # 5. Correctly Map Issues/Approaches back to the grouped dataframe
+    issues_map = df.groupby('Title')['Issues_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
+    apps_map = df.groupby('Title')['Apps_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
+    
+    project_df['All_Issues'] = project_df['Title'].map(issues_map)
+    project_df['All_Approaches'] = project_df['Title'].map(apps_map)
+    
+    # 6. Rename for JavaScript
     project_df = project_df.rename(columns={'Latitude': 'lat', 'Longitude': 'lng'})
-    project_df['All_Issues'] = df.groupby('Title')['Issues_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
-    project_df['All_Approaches'] = df.groupby('Title')['Apps_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
     
     return project_df.dropna(subset=['lat', 'lng'])
 
@@ -96,13 +107,11 @@ if search_query:
     f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
 if selected_regions: f_df = f_df[f_df['Region'].isin(selected_regions)]
 if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
-if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
-if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
+if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues) if isinstance(x, list) else False)]
+if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps) if isinstance(x, list) else False)]
 
-# --- GLOBE VISUALIZATION ---
+# --- GLOBE ---
 st.title("Projects for Peace 🌍")
-
-# CRITICAL FIX FOR JSON CRASH:
 f_df_clean = f_df.mask(f_df.isna(), None)
 points_json = json.dumps(f_df_clean.to_dict(orient='records'))
 
@@ -157,17 +166,15 @@ globe_html = f"""
                 </div>
             `;
         }});
-
       world.controls().autoRotate = true;
       world.controls().autoRotateSpeed = 0.5;
     </script>
   </body>
 </html>
 """
-
 components.html(globe_html, height=650)
 
-# --- LIST VIEW ---
+# --- LIST VIEW (With Safe Joins) ---
 st.markdown("---")
 st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
@@ -175,6 +182,11 @@ for _, row in f_df.iterrows():
         if pd.notna(row['Pull Quotes']): st.markdown(f"***{row['Pull Quotes']}***")
         st.write(f"**🏫 Institution:** {row['Institution']}")
         st.write(f"**🤝 Members:** {row['Members']}")
-        st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
-        st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
+        
+        # SAFE JOIN: Converts every item to string and ignores empty ones
+        issues_str = ", ".join([str(i) for i in row['All_Issues'] if pd.notna(i)]) if isinstance(row['All_Issues'], list) else ""
+        apps_str = ", ".join([str(a) for a in row['All_Approaches'] if pd.notna(a)]) if isinstance(row['All_Approaches'], list) else ""
+        
+        st.write(f"**🎯 Issues:** {issues_str}")
+        st.write(f"**🛠 Approaches:** {apps_str}")
         if pd.notna(row['Quote']): st.write(row['Quote'])
