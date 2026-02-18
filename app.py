@@ -80,19 +80,21 @@ search_query = st.sidebar.text_input("Search Project/Student")
 # Robust unique value collectors for filters
 def get_filter_options(series_of_lists):
     flat_list = []
-    for sublist in series_of_lists:
-        if isinstance(sublist, (list, iter)):
-            for item in sublist:
+    for item_data in series_of_lists:
+        # Check if it's already a list
+        if isinstance(item_data, list):
+            for item in item_data:
                 val = str(item).strip()
                 if val and val.lower() != 'nan':
                     flat_list.append(val)
+        # If it's just a single string (happens sometimes with pandas)
+        elif isinstance(item_data, str):
+            val = item_data.strip()
+            if val and val.lower() != 'nan':
+                flat_list.append(val)
+    
+    # Return unique, sorted list
     return sorted(list(set(flat_list)))
-
-# Collect options for dropdowns
-unique_inst = sorted([str(x).strip() for x in df['Institution'].unique() if pd.notna(x) and str(x).strip() != ''])
-unique_reg = sorted([str(x).strip() for x in df['Region'].unique() if pd.notna(x) and str(x).strip() != ''])
-unique_issues = get_filter_options(df['All_Issues'])
-unique_apps = get_filter_options(df['All_Approaches'])
 
 # Sidebar Selectors
 selected_inst = st.sidebar.multiselect("Institution / School", unique_inst)
@@ -178,4 +180,5 @@ for _, row in f_df.iterrows():
         st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
         if pd.notna(row['Quote']) and str(row['Quote']) != 'nan':
             st.write(row['Quote'])
+
 
