@@ -77,30 +77,41 @@ df = load_data()
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 
-# Robust unique value collectors for filters
+# 1. The Robust Tag Collector (Fixed version)
 def get_filter_options(series_of_lists):
     flat_list = []
     for item_data in series_of_lists:
-        # Check if it's already a list
         if isinstance(item_data, list):
             for item in item_data:
                 val = str(item).strip()
                 if val and val.lower() != 'nan':
                     flat_list.append(val)
-        # If it's just a single string (happens sometimes with pandas)
         elif isinstance(item_data, str):
             val = item_data.strip()
             if val and val.lower() != 'nan':
                 flat_list.append(val)
-    
-    # Return unique, sorted list
     return sorted(list(set(flat_list)))
 
-# Sidebar Selectors
-selected_inst = st.sidebar.multiselect("Institution / School", unique_inst)
-selected_regions = st.sidebar.multiselect("World Region", unique_reg)
-selected_issues = st.sidebar.multiselect("Issue Area", unique_issues)
-selected_apps = st.sidebar.multiselect("Project Approach", unique_apps)
+# 2. Collect Institution & Region (with safety check)
+try:
+    unique_inst = sorted([str(x).strip() for x in df['Institution'].unique() if pd.notna(x) and str(x).strip() != ''])
+except Exception:
+    unique_inst = []
+
+try:
+    unique_reg = sorted([str(x).strip() for x in df['Region'].unique() if pd.notna(x) and str(x).strip() != ''])
+except Exception:
+    unique_reg = []
+
+# 3. Collect Issues & Approaches
+unique_issues = get_filter_options(df['All_Issues'])
+unique_apps = get_filter_options(df['All_Approaches'])
+
+# 4. Sidebar Selectors (The part that was crashing)
+selected_inst = st.sidebar.multiselect("Institution / School", options=unique_inst)
+selected_regions = st.sidebar.multiselect("World Region", options=unique_reg)
+selected_issues = st.sidebar.multiselect("Issue Area", options=unique_issues)
+selected_apps = st.sidebar.multiselect("Project Approach", options=unique_apps)
 
 # --- GLOBE VISUALIZATION ---
 st.title("Projects for Peace 🌍")
@@ -180,5 +191,6 @@ for _, row in f_df.iterrows():
         st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
         if pd.notna(row['Quote']) and str(row['Quote']) != 'nan':
             st.write(row['Quote'])
+
 
 
