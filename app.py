@@ -6,36 +6,86 @@ import streamlit.components.v1 as components
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Projects for Peace 2025", layout="wide")
 
-# --- REGION MAPPING & COLORS ---
 REGION_MAP = {
-    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Burkina Faso", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi"],
-    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka"],
-    "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Georgia", "Armenia", "Kosovo", "Albania", "France", "Spain"],
-    "North America": ["United States", "USA", "Canada", "Mexico", "Guatemala", "Honduras", "Haiti", "Dominican Republic", "Jamaica", "Belize"],
-    "South America": ["Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Bolivia", "Chile", "Paraguay"],
-    "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"]
+    "Africa": [
+        "Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Sierra Leone", 
+        "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", 
+        "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi", "Egypt",
+        "Cacuaco", "Makeni", "Arusha", "Laikipia", "Kasungu", "Kigali", "Bugesera", 
+        "Langa", "Lagos", "Lokichoggio", "Kiambu", "Accra", "Tonj", "Addis Ababa", 
+        "Ouangolodougou", "Moamba", "Kadi'ba", "Kashusha", "Kisumu", "Nairobi", 
+        "Akuse", "Bassar", "Johannesburg", "Matabeleland", "Gweru", "Niamey"
+    ],
+    "Asia": [
+        "India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", 
+        "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", 
+        "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka", "Singapore", "Mongolia",
+        "Jaipur", "Islamabad", "Bayramaly", "Lalitpur", "Mughalpura", "Sindhuli", 
+        "Yasin Ghizer", "Koshi", "Mustang", "Jiangsu", "Khagrachari", "Dili", 
+        "Hokkaido", "Kachankawal", "Jakarta", "Zhalal-Abad", "Rangamati", "Vijayawada", 
+        "Sulawesi", "Tokyo", "Phnom Penh", "Sibuyan", "Sankhatar", "Chakwal", 
+        "Bali", "Chittagong", "Uttar Pradesh", "Punjab", "Dhaka"
+    ],
+    "Europe": [
+        "Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Georgia", "Armenia", 
+        "Kosovo", "Albania", "France", "Spain", "Epirus", "Bucharest", "Mainz", 
+        "Skopje", "Chernivtsi"
+    ],
+    "North America": [
+        "United States", "USA", "Canada", "Mexico", "Guatemala", "Honduras", "Haiti", 
+        "Dominican Republic", "Jamaica", "Belize", "Toronto", "Baltimore", "Chicago", 
+        "Maine", "Michigan", "Nashville", "San Bernardino", "Pennsylvania", "New York", 
+        "Gainesville", "Boston", "North Carolina", "Oregon", "Pittsburgh", "Maryland", 
+        "Oaxaca"
+    ],
+    "South America": [
+        "Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Bolivia", 
+        "Chile", "Paraguay", "Bahia", "Montevideo", "Medellín", "Planes-Mirador", 
+        "Chimborazo", "Rio de Janeiro", "Concepcion", "Jacarezinho", "Quito", 
+        "Colonia Suiza", "Pocrane"
+    ],
+    "Middle East": [
+        "Syria", "Cairo"
+    ],
+    "Oceania": [
+        "Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"
+    ]
 }
 
 REGION_COLORS = {
-    "Africa": "#FF9F43", "Asia": "#FF6B6B", "Europe": "#4834D4",
-    "North America": "#1DD1A1", "South America": "#FECA57",
-    "Oceania": "#9B59B6", "Other": "#C8D6E5"
+    "Africa": "#FF9F43", 
+    "Asia": "#FF6B6B", 
+    "Europe": "#4834D4",
+    "North America": "#1DD1A1", 
+    "South America": "#FECA57",
+    "Middle East": "#54a0ff",  # Added a nice blue for Middle East
+    "Oceania": "#9B59B6", 
+    "Other": "#C8D6E5"
 }
 
 @st.cache_data
 def load_data():
+    # 1. Load the file
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # 1. Standardize and Fill
+    # 2. Clean up blank rows/cells
     cols_to_fill = ['Title', 'Institution', 'Location', 'Latitude', 'Longitude', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
-    # 2. Region Mapping
+    # --- INSERT KEYWORD LOGIC HERE ---
     def get_region(loc):
         loc_str = str(loc)
         for region, keywords in REGION_MAP.items():
-            if any(k.lower() in loc_str.lower() for k in keywords): return region
+            # This line checks if any city/state/country keyword exists in the Location cell
+            if any(k.lower() in loc_str.lower() for k in keywords): 
+                return region
         return "Other"
+    
+    # Apply the logic to create a new 'Region' column
+    df['Region'] = df['Location'].apply(get_region)
+    # ---------------------------------
+
+    # ... continue with the rest of the function (colors, aggregation, etc.)
     
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
@@ -190,3 +240,4 @@ for _, row in f_df.iterrows():
         st.write(f"**🎯 Issues:** {issues_str}")
         st.write(f"**🛠 Approaches:** {apps_str}")
         if pd.notna(row['Quote']): st.write(row['Quote'])
+
