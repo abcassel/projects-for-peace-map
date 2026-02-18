@@ -24,14 +24,10 @@ REGION_COLORS = {
 
 @st.cache_data
 def load_data():
-    # Load the cleaned CSV
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
-    
-    # Fill merged cells if any exist (safety first)
     cols_to_fill = ['Title', 'Institution', 'Location', 'Latitude', 'Longitude', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
-    # Simple Region Logic based on Location text
     def get_region(loc):
         loc_str = str(loc)
         for region, keywords in REGION_MAP.items():
@@ -41,7 +37,6 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
-    # Helper to clean and combine tags (Primary + Secondary)
     def clean_tags(row, col_p, col_s):
         tags = [str(row[col_p]), str(row[col_s])]
         return list(set([t.strip().title() for t in tags if pd.notna(t) and str(t).lower() != 'nan' and t.strip() != '']))
@@ -49,7 +44,6 @@ def load_data():
     df['Issues_List'] = df.apply(lambda r: clean_tags(r, 'Issue Primary', 'Issue Secondary'), axis=1)
     df['Apps_List'] = df.apply(lambda r: clean_tags(r, 'Approach Primary', 'Approach Secondary'), axis=1)
 
-    # Aggregate by Title (handles cases where one project has multiple rows)
     project_df = df.groupby('Title').agg({
         'Institution': 'first', 
         'Members': lambda x: ', '.join(x.astype(str).unique()),
@@ -62,10 +56,7 @@ def load_data():
         'Quote': 'first'
     }).reset_index()
     
-    # Rename columns for the Globe JavaScript (expects lat/lng)
     project_df = project_df.rename(columns={'Latitude': 'lat', 'Longitude': 'lng'})
-    
-    # Final cleanup of Issues and Approaches lists
     project_df['All_Issues'] = df.groupby('Title')['Issues_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
     project_df['All_Approaches'] = df.groupby('Title')['Apps_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
     
@@ -77,45 +68,43 @@ df = load_data()
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 
-# 1. The Robust Tag Collector (Fixed version)
 def get_filter_options(series_of_lists):
     flat_list = []
     for item_data in series_of_lists:
         if isinstance(item_data, list):
             for item in item_data:
                 val = str(item).strip()
-                if val and val.lower() != 'nan':
-                    flat_list.append(val)
+                if val and val.lower() != 'nan': flat_list.append(val)
         elif isinstance(item_data, str):
             val = item_data.strip()
-            if val and val.lower() != 'nan':
-                flat_list.append(val)
+            if val and val.lower() != 'nan': flat_list.append(val)
     return sorted(list(set(flat_list)))
 
-# 2. Collect Institution & Region (with safety check)
-try:
-    unique_inst = sorted([str(x).strip() for x in df['Institution'].unique() if pd.notna(x) and str(x).strip() != ''])
-except Exception:
-    unique_inst = []
-
-try:
-    unique_reg = sorted([str(x).strip() for x in df['Region'].unique() if pd.notna(x) and str(x).strip() != ''])
-except Exception:
-    unique_reg = []
-
-# 3. Collect Issues & Approaches
+unique_inst = sorted([str(x).strip() for x in df['Institution'].unique() if pd.notna(x)])
+unique_reg = sorted([str(x).strip() for x in df['Region'].unique() if pd.notna(x)])
 unique_issues = get_filter_options(df['All_Issues'])
 unique_apps = get_filter_options(df['All_Approaches'])
 
-# 4. Sidebar Selectors (The part that was crashing)
 selected_inst = st.sidebar.multiselect("Institution / School", options=unique_inst)
 selected_regions = st.sidebar.multiselect("World Region", options=unique_reg)
 selected_issues = st.sidebar.multiselect("Issue Area", options=unique_issues)
 selected_apps = st.sidebar.multiselect("Project Approach", options=unique_apps)
 
+# --- APPLY FILTERS ---
+f_df = df.copy()
+if search_query:
+    f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
+if selected_regions: f_df = f_df[f_df['Region'].isin(selected_regions)]
+if selected_inst: f_df = f_df[f_df['Institution'].isin(selected_inst)]
+if selected_issues: f_df = f_df[f_df['All_Issues'].apply(lambda x: any(i in x for i in selected_issues))]
+if selected_apps: f_df = f_df[f_df['All_Approaches'].apply(lambda x: any(a in x for a in selected_apps))]
+
 # --- GLOBE VISUALIZATION ---
 st.title("Projects for Peace 🌍")
-points_json = json.dumps(f_df.to_dict(orient='records'))
+
+# CRITICAL FIX FOR JSON CRASH:
+f_df_clean = f_df.mask(f_df.isna(), None)
+points_json = json.dumps(f_df_clean.to_dict(orient='records'))
 
 globe_html = f"""
 <html>
@@ -155,7 +144,7 @@ globe_html = f"""
         .onPointHover(point => {{ world.controls().autoRotate = !point; }})
         .onPointClick(d => {{
             infoCard.style.display = 'block';
-            const displayQuote = d['Pull Quotes'] && d['Pull Quotes'] !== 'nan' ? `"${{d['Pull Quotes']}}"` : 'Project details available below.';
+            const displayQuote = d['Pull Quotes'] ? `"${{d['Pull Quotes']}}"` : 'Project details available below.';
             cardContent.innerHTML = `
                 <div class="card-title">${{d.Title}}</div>
                 <div class="card-meta">
@@ -178,19 +167,14 @@ globe_html = f"""
 
 components.html(globe_html, height=650)
 
-# --- EXPANDABLE LIST VIEW ---
+# --- LIST VIEW ---
 st.markdown("---")
 st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
     with st.expander(f"📌 {row['Title']} — {row['Location']}"):
-        if pd.notna(row['Pull Quotes']) and str(row['Pull Quotes']) != 'nan':
-            st.markdown(f"***{row['Pull Quotes']}***")
+        if pd.notna(row['Pull Quotes']): st.markdown(f"***{row['Pull Quotes']}***")
         st.write(f"**🏫 Institution:** {row['Institution']}")
         st.write(f"**🤝 Members:** {row['Members']}")
         st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
         st.write(f"**🛠 Approaches:** {', '.join(row['All_Approaches'])}")
-        if pd.notna(row['Quote']) and str(row['Quote']) != 'nan':
-            st.write(row['Quote'])
-
-
-
+        if pd.notna(row['Quote']): st.write(row['Quote'])
