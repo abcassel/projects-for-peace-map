@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 import json
-import os
-import base64
-from io import BytesIO
 import streamlit.components.v1 as components
 
 # --- PAGE CONFIG ---
@@ -25,20 +22,16 @@ REGION_COLORS = {
     "South America": "#FECA57", "Middle East": "#54a0ff", "Oceania": "#9B59B6", "Other": "#C8D6E5"
 }
 
-# --- IMAGE HELPER ---
-def get_base64_image(image_path):
-    """Encodes an image to a base64 string for the HTML globe."""
-    if os.path.exists(image_path):
-        with open(image_path, "rb") as img_file:
-            return f"data:image/jpeg;base64,{base64.b64encode(img_file.read()).decode()}"
-    return ""
-
 @st.cache_data
 def load_data():
+    # 1. Load the file
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
+    
+    # 2. Fill merged rows
     cols_to_fill = ['Title', 'Institution', 'Location', 'Latitude', 'Longitude', 'Issue Primary', 'Approach Primary', 'Pull Quotes', 'Quote']
     df[cols_to_fill] = df[cols_to_fill].ffill()
     
+    # 3. Keyword Region Logic
     def get_region(loc):
         loc_str = str(loc)
         for region, keywords in REGION_MAP.items():
@@ -48,7 +41,7 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#CCCCCC"))
     
-    # Process Tags
+    # 4. Tag Cleaning
     def clean_tags(row, col_p, col_s):
         tags = [str(row[col_p]), str(row[col_s])]
         return [t.strip().title() for t in tags if pd.notna(t) and str(t).lower() != 'nan' and t.strip() != '']
@@ -56,35 +49,32 @@ def load_data():
     df['Issues_List'] = df.apply(lambda r: clean_tags(r, 'Issue Primary', 'Issue Secondary'), axis=1)
     df['Apps_List'] = df.apply(lambda r: clean_tags(r, 'Approach Primary', 'Approach Secondary'), axis=1)
 
+    # 5. Aggregate by Title
     project_df = df.groupby('Title').agg({
-        'ID': 'first', 'Institution': 'first', 
+        'Institution': 'first', 
         'Members': lambda x: ', '.join([str(m) for m in x.unique() if pd.notna(m)]),
-        'Location': 'first', 'Region': 'first', 'Color': 'first',
-        'Latitude': 'first', 'Longitude': 'first', 'Pull Quotes': 'first', 'Quote': 'first'
+        'Location': 'first', 
+        'Region': 'first', 
+        'Color': 'first',
+        'Latitude': 'first', 
+        'Longitude': 'first',
+        'Pull Quotes': 'first',
+        'Quote': 'first'
     }).reset_index()
     
+    # Map tag lists back to the grouped data
     issues_map = df.groupby('Title')['Issues_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
     apps_map = df.groupby('Title')['Apps_List'].apply(lambda x: list(set([item for sublist in x for item in sublist])))
     project_df['All_Issues'] = project_df['Title'].map(issues_map)
     project_df['All_Approaches'] = project_df['Title'].map(apps_map)
     
-    # Image Path Logic
-    def resolve_image(id_val):
-        for ext in ['.jpeg', '.jpg', '.png', '.JPEG', '.JPG', '.PNG']:
-            p = f"images/{id_val}{ext}"
-            if os.path.exists(p): return p
-        return ""
-
-    project_df['imagePath'] = project_df['ID'].apply(resolve_image)
-    # This creates the Base64 string specifically for the Globe
-    project_df['imageBase64'] = project_df['imagePath'].apply(get_base64_image)
-    
+    # Final rename for JS
     project_df = project_df.rename(columns={'Latitude': 'lat', 'Longitude': 'lng'})
     return project_df.dropna(subset=['lat', 'lng'])
 
 df = load_data()
 
-# --- FILTERS ---
+# --- SIDEBAR ---
 st.sidebar.header("🔍 Search & Filter")
 search_query = st.sidebar.text_input("Search Project/Student")
 unique_inst = sorted([str(x).strip() for x in df['Institution'].unique() if pd.notna(x)])
@@ -93,6 +83,7 @@ unique_reg = sorted([str(x).strip() for x in df['Region'].unique() if pd.notna(x
 selected_inst = st.sidebar.multiselect("Institution", options=unique_inst)
 selected_regions = st.sidebar.multiselect("Region", options=unique_reg)
 
+# --- APPLY FILTERS ---
 f_df = df.copy()
 if search_query:
     f_df = f_df[f_df['Title'].str.contains(search_query, case=False) | f_df['Members'].str.contains(search_query, case=False)]
@@ -109,19 +100,16 @@ globe_html = f"""
   <head>
     <script src="//unpkg.com/globe.gl"></script>
     <style> 
-        body {{ margin: 0; background: linear-gradient(to bottom, #ffffff, #e3f2fd); overflow: hidden; font-family: sans-serif; }}
+        body {{ margin: 0; background: white; overflow: hidden; font-family: sans-serif; }}
         #info-card {{
-            position: absolute; top: 20px; right: 20px; width: 300px; max-height: 85vh;
-            background: white; padding: 0; border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: none; overflow-y: auto;
-            z-index: 1000; border: 1px solid #eee;
+            position: absolute; top: 20px; right: 20px; width: 280px; 
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1); display: none; z-index: 1000; border: 1px solid #eee;
         }}
-        .card-img {{ width: 100%; height: 180px; object-fit: cover; border-top-left-radius: 15px; border-top-right-radius: 15px; }}
-        .card-body {{ padding: 15px; }}
-        .close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; color: white; font-size: 24px; text-shadow: 0 0 5px rgba(0,0,0,0.5); }}
-        .card-title {{ font-weight: bold; color: #1a1a1a; margin-bottom: 5px; font-size: 1.1em; }}
+        .close-btn {{ float: right; cursor: pointer; font-weight: bold; color: #888; }}
+        .card-title {{ font-weight: bold; margin-bottom: 5px; color: #333; }}
         .card-meta {{ font-size: 0.85rem; color: #666; margin-bottom: 10px; }}
-        .card-quote {{ font-size: 0.9rem; color: #333; font-style: italic; border-top: 1px solid #f0f0f0; padding-top: 10px; }}
+        .card-quote {{ font-size: 0.9rem; font-style: italic; color: #444; border-top: 1px solid #f0f0f0; padding-top: 10px; }}
     </style>
   </head>
   <body>
@@ -139,18 +127,14 @@ globe_html = f"""
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
         .pointsData(gData)
-        .pointLat('lat').pointLng('lng').pointColor('Color').pointRadius(0.7).pointAltitude(0.02)
-        .pointLabel(d => `<div style="padding: 4px; background: white; border-radius: 4px; color: black;">${{d.Title}}</div>`)
+        .pointLat('lat').pointLng('lng').pointColor('Color').pointRadius(0.7)
+        .pointLabel('Title')
         .onPointClick(d => {{
             infoCard.style.display = 'block';
-            const imgHtml = d.imageBase64 ? `<img class="card-img" src="${{d.imageBase64}}">` : `<div style="height:20px"></div>`;
             cardContent.innerHTML = `
-                ${{imgHtml}}
-                <div class="card-body">
-                    <div class="card-title">${{d.Title}}</div>
-                    <div class="card-meta"><b>${{d.Institution}}</b><br>📍 ${{d.Location}}</div>
-                    <div class="card-quote">${{d['Pull Quotes'] || 'Project details available below.'}}</div>
-                </div>
+                <div class="card-title">${{d.Title}}</div>
+                <div class="card-meta"><b>${{d.Institution}}</b><br>📍 ${{d.Location}}</div>
+                <div class="card-quote">${{d['Pull Quotes'] || 'Explore details below.'}}</div>
             `;
         }});
       world.controls().autoRotate = true;
@@ -159,20 +143,18 @@ globe_html = f"""
   </body>
 </html>
 """
-components.html(globe_html, height=650)
+components.html(globe_html, height=600)
 
 # --- LIST VIEW ---
 st.markdown("---")
 st.subheader("📚 Detailed Project Stories")
 for _, row in f_df.iterrows():
     with st.expander(f"📌 {row['Title']} — {row['Location']}"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            if pd.notna(row['Pull Quotes']): st.markdown(f"***{row['Pull Quotes']}***")
-            st.write(f"**🏫 Institution:** {row['Institution']}")
-            st.write(f"**🤝 Members:** {row['Members']}")
-            st.write(f"**🎯 Issues:** {', '.join(row['All_Issues'])}")
-        with col2:
-            if row['imagePath']: st.image(row['imagePath'], use_container_width=True)
-            else: st.info("No photo available")
+        if pd.notna(row['Pull Quotes']): st.markdown(f"***{row['Pull Quotes']}***")
+        st.write(f"**🏫 Institution:** {row['Institution']}")
+        st.write(f"**🤝 Members:** {row['Members']}")
+        
+        issues = ", ".join(row['All_Issues']) if isinstance(row['All_Issues'], list) else ""
+        st.write(f"**🎯 Issues:** {issues}")
+        
         if pd.notna(row['Quote']): st.write(row['Quote'])
