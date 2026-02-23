@@ -63,7 +63,6 @@ def load_data():
         'Institution': 'first',
         'Members': lambda x: ', '.join(x.dropna().unique()),
         'Location': 'first',
-        'Region': 'first',
         'Color': 'first',
         'lat': 'first',
         'lng': 'first',
@@ -215,3 +214,4 @@ else:
             st.write("---")
             st.write("**The Full Story:**")
             st.write(row['Quote'])
+
