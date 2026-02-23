@@ -36,11 +36,11 @@ def get_base64_image(image_path):
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # 1. Clean and Fill Merged Data
+    # Clean and Fill Merged Data
     fill_cols = ['Title', 'Institution', 'Location', 'Coordinates', 'Quote', 'Pull Quotes']
     df[fill_cols] = df[fill_cols].ffill()
     
-    # 2. Split Coordinates
+    # Split Coordinates
     def parse_coords(c):
         try:
             parts = str(c).split(',')
@@ -48,7 +48,7 @@ def load_data():
         except: return None, None
     df['lat'], df['lng'] = zip(*df['Coordinates'].apply(parse_coords))
     
-    # 3. Assign Regions
+    # Assign Regions
     def get_region(loc):
         loc_str = str(loc).lower()
         for region, keywords in REGION_MAP.items():
@@ -57,7 +57,7 @@ def load_data():
     df['Region'] = df['Location'].apply(get_region)
     df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#C8D6E5"))
 
-    # 4. Group for Projects
+    # Group for Projects
     project_df = df.groupby('Title').agg({
         'ID': 'first',
         'Institution': 'first',
@@ -71,7 +71,6 @@ def load_data():
         'Quote': 'first'
     }).reset_index()
 
-    # 5. Extract Issue/Approach Tags
     def get_tags(title, p_col, s_col):
         subset = df[df['Title'] == title]
         tags = pd.concat([subset[p_col], subset[s_col]]).dropna().unique()
@@ -80,7 +79,6 @@ def load_data():
     project_df['Issues'] = project_df['Title'].apply(lambda t: get_tags(t, 'Issue Primary', 'Issue Secondary'))
     project_df['Approaches'] = project_df['Title'].apply(lambda t: get_tags(t, 'Approach Primary', 'Approach Secondary'))
 
-    # 6. Image Paths & Base64
     def resolve_img(id_val):
         if pd.isna(id_val): return None
         clean_id = str(int(id_val))
@@ -102,19 +100,21 @@ with st.sidebar:
     st.info("""
     **How to interact:**
     1. **Rotate:** The globe spins automatically.
-    2. **Stop:** Hover your mouse over a pin to stop the rotation.
-    3. **Explore:** Click a pin to see the project's story and photo.
-    4. **Filter:** Use the menus below to find specific themes.
+    2. **Stop:** Hover mouse over a pin to stop.
+    3. **Explore:** Click a pin for the story.
     """)
     
     st.subheader("🔍 Filter Projects")
     search = st.text_input("Search Title or Student Name")
     
-    # Generate filter lists
+    # Get unique locations for the filter
+    all_locations = sorted(df['Location'].unique())
     all_inst = sorted(df['Institution'].unique())
     all_issues = sorted(list(set([i for sub in df['Issues'] for i in sub])))
     all_apps = sorted(list(set([a for sub in df['Approaches'] for a in sub])))
     
+    # NEW: Location Filter
+    sel_loc = st.multiselect("Filter by Location", all_locations)
     sel_inst = st.multiselect("Filter by Institution", all_inst)
     sel_issue = st.multiselect("Filter by Issue Area", all_issues)
     sel_app = st.multiselect("Filter by Approach", all_apps)
@@ -123,6 +123,8 @@ with st.sidebar:
 f_df = df.copy()
 if search:
     f_df = f_df[f_df['Title'].str.contains(search, case=False) | f_df['Members'].str.contains(search, case=False)]
+if sel_loc:
+    f_df = f_df[f_df['Location'].isin(sel_loc)]
 if sel_inst:
     f_df = f_df[f_df['Institution'].isin(sel_inst)]
 if sel_issue:
@@ -133,7 +135,6 @@ if sel_app:
 # --- GLOBE COMPONENT ---
 st.title("Projects for Peace: 2025 Cohort 🌍")
 
-# Prepare JSON for JS
 points_json = json.dumps(f_df.mask(f_df.isna(), None).to_dict(orient='records'))
 
 globe_html = f"""
@@ -174,12 +175,16 @@ globe_html = f"""
             const content = document.getElementById('card-content');
             card.style.display = 'block';
             const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" class="c-img">` : '';
+            
+            // CLEANING QUOTES: .replace(/^"|"$/g, '') removes the outer quotes if present
+            const cleanQuote = (d['Pull Quotes'] || 'No pull quote provided.').replace(/^"|"$/g, '');
+
             content.innerHTML = `
                 ${{img}}
                 <div class="c-body">
                     <div class="c-title">${{d.Title}}</div>
                     <div class="c-school">${{d.Institution}} | ${{d.Location}}</div>
-                    <div class="c-quote">"${{d['Pull Quotes'] || 'No pull quote provided.'}}"</div>
+                    <div class="c-quote">"${{cleanQuote}}"</div>
                 </div>
             `;
         }});
@@ -198,6 +203,8 @@ if f_df.empty:
     st.warning("No projects match your search criteria.")
 else:
     for _, row in f_df.iterrows():
+        # Clean quotes for the table view as well
+        display_quote = str(row['Pull Quotes']).strip('"')
         with st.expander(f"📍 {row['Title']} ({row['Institution']})"):
             c1, c2 = st.columns([2, 1])
             with c1:
@@ -205,7 +212,7 @@ else:
                 st.markdown(f"**Team:** {row['Members']}")
                 st.markdown(f"**Focus:** {', '.join(row['Issues'])}")
                 st.markdown(f"**Approach:** {', '.join(row['Approaches'])}")
-                st.info(f"*{row['Pull Quotes']}*")
+                st.info(f"*{display_quote}*")
             with c2:
                 if row['imagePath']:
                     st.image(row['imagePath'], use_container_width=True)
