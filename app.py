@@ -8,20 +8,32 @@ import streamlit.components.v1 as components
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Projects for Peace 2025", layout="wide", page_icon="🌍")
 
-# --- REGION MAPPING & COLORS ---
+# --- MAPPINGS & STYLING ---
 REGION_MAP = {
-    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi", "Egypt", "Cacuaco", "Makeni", "Arusha", "Laikipia", "Kasungu", "Kigali", "Bugesera", "Langa", "Lagos", "Lokichoggio", "Kiambu", "Accra", "Tonj", "Addis Ababa", "Ouangolodougou", "Moamba", "Kadi'ba", "Kashusha", "Kisumu", "Nairobi", "Akuse", "Bassar", "Johannesburg", "Matabeleland", "Gweru", "Niamey"],
-    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka", "Singapore", "Mongolia", "Jaipur", "Islamabad", "Bayramaly", "Lalitpur", "Mughalpura", "Sindhuli", "Yasin Ghizer", "Koshi", "Mustang", "Jiangsu", "Khagrachari", "Dili", "Hokkaido", "Kachankawal", "Jakarta", "Zhalal-Abad", "Rangamati", "Vijayawada", "Sulawesi", "Tokyo", "Phnom Penh", "Sibuyan", "Sankhatar", "Chakwal", "Bali", "Chittagong", "Uttar Pradesh", "Punjab", "Dhaka"],
-    "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Georgia", "Armenia", "Kosovo", "Albania", "France", "Spain", "Epirus", "Bucharest", "Mainz", "Skopje", "Chernivtsi"],
-    "North America": ["United States", "USA", "Canada", "Mexico", "Guatemala", "Honduras", "Haiti", "Dominican Republic", "Jamaica", "Belize", "Toronto", "Baltimore", "Chicago", "Maine", "Michigan", "Nashville", "San Bernardino", "Pennsylvania", "New York", "Gainesville", "Boston", "North Carolina", "Oregon", "Pittsburgh", "Maryland", "Oaxaca"],
-    "South America": ["Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Bolivia", "Chile", "Paraguay", "Bahia", "Montevideo", "Medellín", "Planes-Mirador", "Chimborazo", "Rio de Janeiro", "Concepcion", "Jacarezinho", "Quito", "Colonia Suiza", "Pocrane"],
-    "Middle East": ["Syria", "Cairo"],
-    "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"]
+    "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi", "Egypt"],
+    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka"],
+    "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Georgia", "Armenia", "Kosovo", "Albania", "France", "Spain"],
+    "North America": ["United States", "USA", "Canada", "Mexico", "Guatemala", "Honduras", "Haiti", "Dominican Republic", "Jamaica", "Belize"],
+    "South America": ["Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Bolivia", "Chile", "Paraguay"],
+    "Middle East": ["Syria", "Cairo", "Jordan", "Lebanon"],
+    "Oceania": ["Marshall Islands", "Fiji", "Samoa", "Vanuatu", "Australia"]
 }
 
-REGION_COLORS = {
-    "Africa": "#FF9F43", "Asia": "#FF6B6B", "Europe": "#4834D4", "North America": "#1DD1A1", 
-    "South America": "#FECA57", "Middle East": "#54a0ff", "Oceania": "#9B59B6", "Other": "#C8D6E5"
+# Mapping Issue Primary to Emojis
+ISSUE_EMOJI_MAP = {
+    "Education": "📚",
+    "Food Security": "🍎",
+    "Environment": "🌱",
+    "Health": "🏥",
+    "Economic Development": "💰",
+    "Technology": "💻",
+    "Arts": "🎨",
+    "Peacebuilding": "🕊️",
+    "Conflict Resolution": "🤝",
+    "Human Rights": "⚖️",
+    "Youth Empowerment": "🎒",
+    "Women's Empowerment": "💜",
+    "Infrastructure": "🏗️"
 }
 
 # --- HELPERS ---
@@ -36,7 +48,7 @@ def get_base64_image(image_path):
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # Clean and Fill Merged Data
+    # Clean and Fill Data
     fill_cols = ['Title', 'Institution', 'Location', 'Coordinates', 'Quote', 'Pull Quotes']
     df[fill_cols] = df[fill_cols].ffill()
     
@@ -55,7 +67,6 @@ def load_data():
             if any(k.lower() in loc_str for k in keywords): return region
         return "Other"
     df['Region'] = df['Location'].apply(get_region)
-    df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#C8D6E5"))
 
     # Group for Projects
     project_df = df.groupby('Title').agg({
@@ -64,13 +75,17 @@ def load_data():
         'Members': lambda x: ', '.join(x.dropna().unique()),
         'Location': 'first',
         'Region': 'first',
-        'Color': 'first',
         'lat': 'first',
         'lng': 'first',
         'Pull Quotes': 'first',
-        'Quote': 'first'
+        'Quote': 'first',
+        'Issue Primary': 'first'
     }).reset_index()
 
+    # Assign Emoji based on Primary Issue
+    project_df['Emoji'] = project_df['Issue Primary'].apply(lambda x: ISSUE_EMOJI_MAP.get(str(x).strip(), "📍"))
+
+    # Extract Issue/Approach Tags for sidebar filters
     def get_tags(title, p_col, s_col):
         subset = df[df['Title'] == title]
         tags = pd.concat([subset[p_col], subset[s_col]]).dropna().unique()
@@ -79,6 +94,7 @@ def load_data():
     project_df['Issues'] = project_df['Title'].apply(lambda t: get_tags(t, 'Issue Primary', 'Issue Secondary'))
     project_df['Approaches'] = project_df['Title'].apply(lambda t: get_tags(t, 'Approach Primary', 'Approach Secondary'))
 
+    # Images
     def resolve_img(id_val):
         if pd.isna(id_val): return None
         clean_id = str(int(id_val))
@@ -94,30 +110,21 @@ def load_data():
 
 df = load_data()
 
-# --- SIDEBAR: INSTRUCTIONS & FILTERS ---
+# --- SIDEBAR: FILTERS ---
 with st.sidebar:
     st.title("Peace Map Controls")
-    st.info("""
-    **How to interact:**
-    1. **Rotate:** The globe spins automatically.
-    2. **Stop:** Hover mouse over a pin to stop.
-    3. **Explore:** Click a pin for the story.
-    """)
+    st.info("Click an emoji on the globe to see the project story and photo.")
     
     st.subheader("🔍 Filter Projects")
     search = st.text_input("Search Title or Student Name")
     
-    # Get unique locations for the filter
     all_locations = sorted(df['Location'].unique())
     all_inst = sorted(df['Institution'].unique())
     all_issues = sorted(list(set([i for sub in df['Issues'] for i in sub])))
-    all_apps = sorted(list(set([a for sub in df['Approaches'] for a in sub])))
     
-    # NEW: Location Filter
     sel_loc = st.multiselect("Filter by Location", all_locations)
     sel_inst = st.multiselect("Filter by Institution", all_inst)
     sel_issue = st.multiselect("Filter by Issue Area", all_issues)
-    sel_app = st.multiselect("Filter by Approach", all_apps)
 
 # --- FILTER LOGIC ---
 f_df = df.copy()
@@ -129,8 +136,6 @@ if sel_inst:
     f_df = f_df[f_df['Institution'].isin(sel_inst)]
 if sel_issue:
     f_df = f_df[f_df['Issues'].apply(lambda x: any(i in x for i in sel_issue))]
-if sel_app:
-    f_df = f_df[f_df['Approaches'].apply(lambda x: any(a in x for a in sel_app))]
 
 # --- GLOBE COMPONENT ---
 st.title("Projects for Peace: 2025 Cohort 🌍")
@@ -145,81 +150,80 @@ globe_html = f"""
 </div>
 
 <script src="//unpkg.com/globe.gl"></script>
-<style>
-    body {{ margin: 0; font-family: sans-serif; background: transparent; }}
-    #info-card {{
-        position: absolute; top: 10px; right: 10px; width: 300px; max-height: 90vh;
-        background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-        display: none; overflow-y: auto; z-index: 100; border: 1px solid #eee;
-    }}
-    #close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 24px; color: #999; }}
-    .c-img {{ width: 100%; border-radius: 12px 12px 0 0; object-fit: cover; height: 160px; }}
-    .c-body {{ padding: 15px; }}
-    .c-title {{ font-weight: bold; font-size: 1.1em; color: #111; margin-bottom: 5px; line-height: 1.2; }}
-    .c-school {{ font-size: 0.85em; color: #666; margin-bottom: 10px; }}
-    .c-quote {{ font-size: 0.95em; font-style: italic; color: #333; border-top: 1px solid #eee; padding-top: 10px; }}
-</style>
-
 <script>
     const data = {points_json};
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
-        .pointsData(data)
-        .pointLat('lat').pointLng('lng').pointColor('Color')
-        .pointRadius(0.8).pointAltitude(0.01)
-        .pointLabel('Title')
-        .onPointHover(point => {{ world.controls().autoRotate = !point; }})
-        .onPointClick(d => {{
-            const card = document.getElementById('info-card');
-            const content = document.getElementById('card-content');
-            card.style.display = 'block';
-            const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" class="c-img">` : '';
-            
-            // CLEANING QUOTES: .replace(/^"|"$/g, '') removes the outer quotes if present
-            const cleanQuote = (d['Pull Quotes'] || 'No pull quote provided.').replace(/^"|"$/g, '');
+        .htmlElementsData(data)
+        .htmlElement(d => {{
+          const el = document.createElement('div');
+          // Display the emoji as the marker
+          el.innerHTML = `<div style="font-size: 22px; cursor: pointer; filter: drop-shadow(0 0 3px white);">${{d.Emoji}}</div>`;
+          
+          el.onclick = () => {{
+              const card = document.getElementById('info-card');
+              const content = document.getElementById('card-content');
+              card.style.display = 'block';
+              const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" class="c-img">` : '';
+              
+              // Strip outer quotes from the pull quote
+              const cleanQuote = (d['Pull Quotes'] || 'No quote provided').replace(/^"|"$/g, '');
 
-            content.innerHTML = `
-                ${{img}}
-                <div class="c-body">
-                    <div class="c-title">${{d.Title}}</div>
-                    <div class="c-school">${{d.Institution}} | ${{d.Location}}</div>
-                    <div class="c-quote">"${{cleanQuote}}"</div>
-                </div>
-            `;
-        }});
+              content.innerHTML = `
+                  ${{img}}
+                  <div class="c-body">
+                      <div class="c-title">${{d.Title}}</div>
+                      <div class="c-school">${{d.Institution}} | ${{d.Location}}</div>
+                      <div class="c-quote">"${{cleanQuote}}"</div>
+                  </div>
+              `;
+          }};
+          return el;
+        }})
+        .onPointHover(point => {{ world.controls().autoRotate = !point; }});
     
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.6;
+    world.controls().autoRotateSpeed = 0.5;
 </script>
-"""
-components.html(globe_html, height=600)
 
-# --- DETAILED LIST VIEW ---
+<style>
+    body {{ margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: transparent; }}
+    #info-card {{
+        position: absolute; top: 20px; right: 20px; width: 320px; max-height: 85vh;
+        background: white; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        display: none; overflow-y: auto; z-index: 1000; border: 1px solid #ddd;
+    }}
+    #close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 24px; color: #aaa; transition: 0.3s; }}
+    #close-btn:hover {{ color: #333; }}
+    .c-img {{ width: 100%; border-radius: 15px 15px 0 0; object-fit: cover; height: 180px; }}
+    .c-body {{ padding: 20px; }}
+    .c-title {{ font-weight: 700; font-size: 1.2em; color: #2c3e50; margin-bottom: 8px; line-height: 1.3; }}
+    .c-school {{ font-size: 0.9em; color: #7f8c8d; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .c-quote {{ font-size: 1em; font-style: italic; color: #34495e; border-top: 2px solid #f1f1f1; padding-top: 15px; line-height: 1.5; }}
+</style>
+"""
+components.html(globe_html, height=650)
+
+# --- GALLERY VIEW ---
 st.write("---")
-st.subheader("📖 Project Gallery")
+st.subheader("📖 Full Project Gallery")
 
 if f_df.empty:
-    st.warning("No projects match your search criteria.")
+    st.warning("Try adjusting your filters to see more projects.")
 else:
     for _, row in f_df.iterrows():
-        # Clean quotes for the table view as well
-        display_quote = str(row['Pull Quotes']).strip('"')
-        with st.expander(f"📍 {row['Title']} ({row['Institution']})"):
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                st.markdown(f"**Location:** {row['Location']}")
-                st.markdown(f"**Grantee(s):** {row['Members']}")
-                st.markdown(f"**Focus:** {', '.join(row['Issues'])}")
-                st.markdown(f"**Approach:** {', '.join(row['Approaches'])}")
-                st.info(f"*{display_quote}*")
-            with c2:
+        # Clean quotes for list view
+        clean_p_quote = str(row['Pull Quotes']).strip('"')
+        with st.expander(f"{row['Emoji']} {row['Title']} — {row['Location']}"):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.write(f"**Institution:** {row['Institution']}")
+                st.write(f"**Team Members:** {row['Members']}")
+                st.write(f"**Primary Theme:** {row['Issue Primary']}")
+                st.info(f"\"{clean_p_quote}\"")
+            with col2:
                 if row['imagePath']:
                     st.image(row['imagePath'], use_container_width=True)
-                else:
-                    st.caption("No image available.")
-            
-            st.write("---")
-            st.write("**The Full Story:**")
+            st.markdown("**Full Project Narrative:**")
             st.write(row['Quote'])
-
