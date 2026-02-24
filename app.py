@@ -209,7 +209,7 @@ else:
             c1, c2 = st.columns([2, 1])
             with c1:
                 st.markdown(f"**Location:** {row['Location']}")
-                st.markdown(f"**Team:** {row['Members']}")
+                st.markdown(f"**Grantee(s):** {row['Members']}")
                 st.markdown(f"**Focus:** {', '.join(row['Issues'])}")
                 st.markdown(f"**Approach:** {', '.join(row['Approaches'])}")
                 st.info(f"*{display_quote}*")
@@ -222,3 +222,4 @@ else:
             st.write("---")
             st.write("**The Full Story:**")
             st.write(row['Quote'])
+
