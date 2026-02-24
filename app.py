@@ -102,6 +102,7 @@ with st.sidebar:
     1. **Rotate:** The globe spins automatically.
     2. **Stop:** Hover mouse over a pin to stop.
     3. **Explore:** Click a pin for the story.
+    4. **Scroll:** Alphabetical project gallery.
     """)
     
     st.subheader("🔍 Filter Projects")
@@ -222,3 +223,4 @@ else:
             st.write("---")
             st.write("**The Full Story:**")
             st.write(row['Quote'])
+
