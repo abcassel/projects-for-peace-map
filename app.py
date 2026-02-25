@@ -55,7 +55,7 @@ def load_data():
             if any(k.lower() in loc_str for k in keywords): return region
         return "Other"
     df['Region'] = df['Location'].apply(get_region)
-    df['Color'] = df['Region'].apply(lambda r: REGION_COLORS.get(r, "#C8D6E5"))
+    df['Color'] = "#2E86AB"
 
     # Group for Projects
     project_df = df.groupby('Title').agg({
@@ -223,6 +223,7 @@ else:
             st.write("---")
             st.write("**The Full Story:**")
             st.write(row['Quote'])
+
 
 
 
