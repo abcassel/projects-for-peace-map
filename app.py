@@ -20,8 +20,8 @@ REGION_MAP = {
 }
 
 REGION_COLORS = {
-    "Africa": "#FF9F43", "Asia": "#FF6B6B", "Europe": "#4834D4", "North America": "#1DD1A1", 
-    "South America": "#FECA57", "Middle East": "#54a0ff", "Oceania": "#9B59B6", "Other": "#C8D6E5"
+    "Africa": "#FECA57", "Asia": "#FECA57", "Europe": "#FECA57", "North America": "#FECA57", 
+    "South America": "#FECA57", "Middle East": "#FECA57", "Oceania": "#FECA57", "Other": "#FECA57"
 }
 
 # --- HELPERS ---
@@ -223,6 +223,7 @@ else:
             st.write("---")
             st.write("**The Full Story:**")
             st.write(row['Quote'])
+
 
 
 
