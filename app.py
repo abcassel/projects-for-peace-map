@@ -8,25 +8,24 @@ import streamlit.components.v1 as components
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Projects for Peace 2025", layout="wide", page_icon="🌍")
 
-# --- REGION MAPPING & COLORS ---
+# --- REGION MAPPING (Used for logic/filtering) ---
 REGION_MAP = {
     "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi", "Egypt", "Cacuaco", "Makeni", "Arusha", "Laikipia", "Kasungu", "Kigali", "Bugesera", "Langa", "Lagos", "Lokichoggio", "Kiambu", "Accra", "Tonj", "Addis Ababa", "Ouangolodougou", "Moamba", "Kadi'ba", "Kashusha", "Kisumu", "Nairobi", "Akuse", "Bassar", "Johannesburg", "Matabeleland", "Gweru", "Niamey"],
-    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka", "Singapore", "Mongolia", "Jaipur", "Islamabad", "Bayramaly", "Lalitpur", "Mughalpura", "Sindhuli", "Yasin Ghizer", "Koshi", "Mustang", "Jiangsu", "Khagrachari", "Dili", "Hokkaido", "Kachankawal", "Jakarta", "Zhalal-Abad", "Rangamati", "Vijayawada", "Sulawesi", "Tokyo", "Phnom Penh", "Sibuyan", "Sankhatar", "Chakwal", "Bali", "Chittagong", "Uttar Pradesh", "Punjab", "Dhaka"],
+    "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka", "Singapore", "Mongolia", "Jaipur", "Islamabad", "Bayramaly", "Lalitpur", "Mughalpura", "Sindhuli", "Yasin Ghizer", "Koshi", "Mustang", "Jiangsu", "Khagrachari", "Dili", "Hokkaido", "Kachankawal", "Jakarta", "Zhalal-Abad", "Rangamati", "Vijayawada", "Sulawesi", "Tokyo", "Phnom Penh", "Sibuyan", "Sankhatar", "Chakwal", "Bali", "Chittagong", "Uttar Pradesh", "Punjab", "Dhaka", "Timor-Leste", "East Timor"],
     "Europe": ["Greece", "Romania", "Germany", "Macedonia", "Ukraine", "Georgia", "Armenia", "Kosovo", "Albania", "France", "Spain", "Epirus", "Bucharest", "Mainz", "Skopje", "Chernivtsi"],
     "North America": ["United States", "USA", "Canada", "Mexico", "Guatemala", "Honduras", "Haiti", "Dominican Republic", "Jamaica", "Belize", "Toronto", "Baltimore", "Chicago", "Maine", "Michigan", "Nashville", "San Bernardino", "Pennsylvania", "New York", "Gainesville", "Boston", "North Carolina", "Oregon", "Pittsburgh", "Maryland", "Oaxaca"],
     "South America": ["Brazil", "Colombia", "Argentina", "Peru", "Ecuador", "Uruguay", "Bolivia", "Chile", "Paraguay", "Bahia", "Montevideo", "Medellín", "Planes-Mirador", "Chimborazo", "Rio de Janeiro", "Concepcion", "Jacarezinho", "Quito", "Colonia Suiza", "Pocrane"],
     "Middle East": ["Syria", "Cairo"],
-    "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu", "Timor-Leste"]
+    "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"]
 }
 
-REGION_COLORS = {
-    "Africa": "#FECA57", "Asia": "#FECA57", "Europe": "#FECA57", "North America": "#FECA57", 
-    "South America": "#FECA57", "Middle East": "#FECA57", "Oceania": "#FECA57", "Other": "#FECA57"
-}
+# --- UNIFIED TEAL COLOR ---
+TEAL_COLOR = "#00B5AD"
 
 # --- HELPERS ---
 def get_base64_image(image_path):
-    if image_path and os.path.exists(image_path):
+    # Defensive check to prevent TypeError crashes
+    if isinstance(image_path, str) and os.path.exists(image_path):
         with open(image_path, "rb") as f:
             data = base64.b64encode(f.read()).decode()
             return f"data:image/jpeg;base64,{data}"
@@ -36,11 +35,9 @@ def get_base64_image(image_path):
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
-    # Clean and Fill Merged Data
     fill_cols = ['Title', 'Institution', 'Location', 'Coordinates', 'Quote', 'Pull Quotes']
     df[fill_cols] = df[fill_cols].ffill()
     
-    # Split Coordinates
     def parse_coords(c):
         try:
             parts = str(c).split(',')
@@ -48,16 +45,16 @@ def load_data():
         except: return None, None
     df['lat'], df['lng'] = zip(*df['Coordinates'].apply(parse_coords))
     
-    # Assign Regions
     def get_region(loc):
         loc_str = str(loc).lower()
         for region, keywords in REGION_MAP.items():
             if any(k.lower() in loc_str for k in keywords): return region
         return "Other"
+    
     df['Region'] = df['Location'].apply(get_region)
-    df['Color'] = "#00B5AD"
+    # Apply the unified Teal to every row
+    df['Color'] = TEAL_COLOR
 
-    # Group for Projects
     project_df = df.groupby('Title').agg({
         'ID': 'first',
         'Institution': 'first',
@@ -108,17 +105,18 @@ with st.sidebar:
     st.subheader("🔍 Filter Projects")
     search = st.text_input("Search Title or Student Name")
     
-    # Get unique locations for the filter
     all_locations = sorted(df['Location'].unique())
     all_inst = sorted(df['Institution'].unique())
     all_issues = sorted(list(set([i for sub in df['Issues'] for i in sub])))
     all_apps = sorted(list(set([a for sub in df['Approaches'] for a in sub])))
     
-    # NEW: Location Filter
     sel_loc = st.multiselect("Filter by Location", all_locations)
     sel_inst = st.multiselect("Filter by Institution", all_inst)
     sel_issue = st.multiselect("Filter by Issue Area", all_issues)
     sel_app = st.multiselect("Filter by Approach", all_apps)
+
+    st.markdown("---")
+    st.caption("✨ **Tip:** Scroll down the main page to visit the complete project gallery.")
 
 # --- FILTER LOGIC ---
 f_df = df.copy()
@@ -176,8 +174,6 @@ globe_html = f"""
             const content = document.getElementById('card-content');
             card.style.display = 'block';
             const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" class="c-img">` : '';
-            
-            // CLEANING QUOTES: .replace(/^"|"$/g, '') removes the outer quotes if present
             const cleanQuote = (d['Pull Quotes'] || 'No pull quote provided.').replace(/^"|"$/g, '');
 
             content.innerHTML = `
@@ -204,7 +200,6 @@ if f_df.empty:
     st.warning("No projects match your search criteria.")
 else:
     for _, row in f_df.iterrows():
-        # Clean quotes for the table view as well
         display_quote = str(row['Pull Quotes']).strip('"')
         with st.expander(f"📍 {row['Title']} ({row['Institution']})"):
             c1, c2 = st.columns([2, 1])
@@ -223,10 +218,3 @@ else:
             st.write("---")
             st.write("**The Full Story:**")
             st.write(row['Quote'])
-
-
-
-
-
-
-
