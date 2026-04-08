@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Projects for Peace 2025", layout="wide", page_icon="🌍")
 
-# --- REGION MAPPING (Used for logic/filtering) ---
+# --- REGION MAPPING ---
 REGION_MAP = {
     "Africa": ["Angola", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "Sierra Leone", "South Sudan", "South Africa", "Mozambique", "Senegal", "Togo", "Niger", "Cameroon", "Zimbabwe", "Ethiopia", "Uganda", "Zambia", "Malawi", "Egypt", "Cacuaco", "Makeni", "Arusha", "Laikipia", "Kasungu", "Kigali", "Bugesera", "Langa", "Lagos", "Lokichoggio", "Kiambu", "Accra", "Tonj", "Addis Ababa", "Ouangolodougou", "Moamba", "Kadi'ba", "Kashusha", "Kisumu", "Nairobi", "Akuse", "Bassar", "Johannesburg", "Matabeleland", "Gweru", "Niamey"],
     "Asia": ["India", "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Turkmenistan", "China", "Japan", "Malaysia", "Cambodia", "Indonesia", "Philippines", "Bhutan", "Kyrgyzstan", "Vietnam", "Thailand", "Sri Lanka", "Singapore", "Mongolia", "Jaipur", "Islamabad", "Bayramaly", "Lalitpur", "Mughalpura", "Sindhuli", "Yasin Ghizer", "Koshi", "Mustang", "Jiangsu", "Khagrachari", "Dili", "Hokkaido", "Kachankawal", "Jakarta", "Zhalal-Abad", "Rangamati", "Vijayawada", "Sulawesi", "Tokyo", "Phnom Penh", "Sibuyan", "Sankhatar", "Chakwal", "Bali", "Chittagong", "Uttar Pradesh", "Punjab", "Dhaka", "Timor-Leste", "East Timor"],
@@ -19,25 +19,30 @@ REGION_MAP = {
     "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"]
 }
 
-# --- UNIFIED TEAL COLOR ---
+# Unified Professional Teal
 TEAL_COLOR = "#00B5AD"
 
 # --- HELPERS ---
 def get_base64_image(image_path):
-    # Defensive check to prevent TypeError crashes
+    """Safely converts image file to base64 string to prevent app crashes."""
     if isinstance(image_path, str) and os.path.exists(image_path):
-        with open(image_path, "rb") as f:
-            data = base64.b64encode(f.read()).decode()
-            return f"data:image/jpeg;base64,{data}"
+        try:
+            with open(image_path, "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+                return f"data:image/jpeg;base64,{data}"
+        except Exception:
+            return None
     return None
 
 @st.cache_data
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
     
+    # Clean and Fill Merged Data
     fill_cols = ['Title', 'Institution', 'Location', 'Coordinates', 'Quote', 'Pull Quotes']
     df[fill_cols] = df[fill_cols].ffill()
     
+    # Split Coordinates
     def parse_coords(c):
         try:
             parts = str(c).split(',')
@@ -45,6 +50,7 @@ def load_data():
         except: return None, None
     df['lat'], df['lng'] = zip(*df['Coordinates'].apply(parse_coords))
     
+    # Assign Regions Logic
     def get_region(loc):
         loc_str = str(loc).lower()
         for region, keywords in REGION_MAP.items():
@@ -52,9 +58,9 @@ def load_data():
         return "Other"
     
     df['Region'] = df['Location'].apply(get_region)
-    # Apply the unified Teal to every row
-    df['Color'] = TEAL_COLOR
+    df['Color'] = TEAL_COLOR  # All pins get the nice teal
 
+    # Group for Projects
     project_df = df.groupby('Title').agg({
         'ID': 'first',
         'Institution': 'first',
@@ -210,8 +216,9 @@ else:
                 st.markdown(f"**Approach:** {', '.join(row['Approaches'])}")
                 st.info(f"*{display_quote}*")
             with c2:
-                if row['imagePath']:
-                    st.image(row['imagePath'], use_container_width=True)
+                # FIXED: Using Base64 here instead of imagePath to prevent AttributeError
+                if row['imageBase64']:
+                    st.image(row['imageBase64'], use_container_width=True)
                 else:
                     st.caption("No image available.")
             
