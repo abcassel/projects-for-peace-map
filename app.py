@@ -19,30 +19,28 @@ REGION_MAP = {
     "Oceania": ["Marshall Islands", "Kwajalein", "Fiji", "Samoa", "Vanuatu"]
 }
 
-# Unified Professional Teal
 TEAL_COLOR = "#00B5AD"
 
 # --- HELPERS ---
 def get_base64_image(image_path):
-    """Safely converts image file to base64 string to prevent app crashes."""
     if isinstance(image_path, str) and os.path.exists(image_path):
         try:
             with open(image_path, "rb") as f:
                 data = base64.b64encode(f.read()).decode()
-                return f"data:image/jpeg;base64,{data}"
-        except Exception:
-            return None
+                # Detect extension for the mime type
+                ext = image_path.split('.')[-1].lower()
+                if ext == 'png': mime = "image/png"
+                else: mime = "image/jpeg"
+                return f"data:{mime};base64,{data}"
+        except: return None
     return None
 
 @st.cache_data
 def load_data():
     df = pd.read_csv('2025 Projects ABC Worksheet - App worksheet.csv')
-    
-    # Clean and Fill Merged Data
     fill_cols = ['Title', 'Institution', 'Location', 'Coordinates', 'Quote', 'Pull Quotes']
     df[fill_cols] = df[fill_cols].ffill()
     
-    # Split Coordinates
     def parse_coords(c):
         try:
             parts = str(c).split(',')
@@ -50,178 +48,105 @@ def load_data():
         except: return None, None
     df['lat'], df['lng'] = zip(*df['Coordinates'].apply(parse_coords))
     
-    # Assign Regions Logic
-    def get_region(loc):
-        loc_str = str(loc).lower()
-        for region, keywords in REGION_MAP.items():
-            if any(k.lower() in loc_str for k in keywords): return region
-        return "Other"
-    
-    df['Region'] = df['Location'].apply(get_region)
-    df['Color'] = TEAL_COLOR  # All pins get the nice teal
+    df['Region'] = df['Location'].apply(lambda x: next((r for r, k in REGION_MAP.items() if any(i.lower() in str(x).lower() for i in k)), "Other"))
+    df['Color'] = TEAL_COLOR
 
-    # Group for Projects
     project_df = df.groupby('Title').agg({
-        'ID': 'first',
-        'Institution': 'first',
-        'Members': lambda x: ', '.join(x.dropna().unique()),
-        'Location': 'first',
-        'Region': 'first',
-        'Color': 'first',
-        'lat': 'first',
-        'lng': 'first',
-        'Pull Quotes': 'first',
-        'Quote': 'first'
+        'ID': 'first', 'Institution': 'first', 'Members': lambda x: ', '.join(x.dropna().unique()),
+        'Location': 'first', 'Region': 'first', 'Color': 'first', 'lat': 'first', 'lng': 'first',
+        'Pull Quotes': 'first', 'Quote': 'first'
     }).reset_index()
 
     def get_tags(title, p_col, s_col):
         subset = df[df['Title'] == title]
-        tags = pd.concat([subset[p_col], subset[s_col]]).dropna().unique()
-        return [str(t).strip() for t in tags if str(t).lower() != 'nan']
+        return [str(t).strip() for t in pd.concat([subset[p_col], subset[s_col]]).dropna().unique() if str(t).lower() != 'nan']
 
     project_df['Issues'] = project_df['Title'].apply(lambda t: get_tags(t, 'Issue Primary', 'Issue Secondary'))
     project_df['Approaches'] = project_df['Title'].apply(lambda t: get_tags(t, 'Approach Primary', 'Approach Secondary'))
 
     def resolve_img(id_val):
         if pd.isna(id_val): return None
-        clean_id = str(int(id_val))
         for ext in ['.jpg', '.jpeg', '.png']:
-            path = f"images/{clean_id}{ext}"
+            path = f"images/{int(id_val)}{ext}"
             if os.path.exists(path): return path
         return None
 
-    project_df['imagePath'] = project_df['ID'].apply(resolve_img)
-    project_df['imageBase64'] = project_df['imagePath'].apply(get_base64_image)
-    
+    project_df['imageBase64'] = project_df['ID'].apply(resolve_img).apply(get_base64_image)
     return project_df.dropna(subset=['lat', 'lng'])
 
 df = load_data()
 
-# --- SIDEBAR: INSTRUCTIONS & FILTERS ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("Peace Map Controls")
-    st.info("""
-    **How to interact:**
-    1. **Rotate:** The globe spins automatically.
-    2. **Stop:** Hover mouse over a pin to stop.
-    3. **Explore:** Click a pin for the story.
-    4. **Scroll:** Alphabetical project gallery.
-    """)
-    
+    st.info("1. Rotate: Auto-spins\n2. Stop: Hover pin\n3. Explore: Click pin")
     st.subheader("🔍 Filter Projects")
     search = st.text_input("Search Title or Student Name")
-    
-    all_locations = sorted(df['Location'].unique())
-    all_inst = sorted(df['Institution'].unique())
-    all_issues = sorted(list(set([i for sub in df['Issues'] for i in sub])))
-    all_apps = sorted(list(set([a for sub in df['Approaches'] for a in sub])))
-    
-    sel_loc = st.multiselect("Filter by Location", all_locations)
-    sel_inst = st.multiselect("Filter by Institution", all_inst)
-    sel_issue = st.multiselect("Filter by Issue Area", all_issues)
-    sel_app = st.multiselect("Filter by Approach", all_apps)
-
+    sel_loc = st.multiselect("Filter by Location", sorted(df['Location'].unique()))
+    sel_inst = st.multiselect("Filter by Institution", sorted(df['Institution'].unique()))
     st.markdown("---")
-    st.caption("✨ **Tip:** Scroll down the main page to visit the complete project gallery.")
+    st.caption("✨ Tip: Scroll down the main page for the gallery.")
 
-# --- FILTER LOGIC ---
+# --- FILTERING ---
 f_df = df.copy()
-if search:
-    f_df = f_df[f_df['Title'].str.contains(search, case=False) | f_df['Members'].str.contains(search, case=False)]
-if sel_loc:
-    f_df = f_df[f_df['Location'].isin(sel_loc)]
-if sel_inst:
-    f_df = f_df[f_df['Institution'].isin(sel_inst)]
-if sel_issue:
-    f_df = f_df[f_df['Issues'].apply(lambda x: any(i in x for i in sel_issue))]
-if sel_app:
-    f_df = f_df[f_df['Approaches'].apply(lambda x: any(a in x for a in sel_app))]
+if search: f_df = f_df[f_df['Title'].str.contains(search, case=False) | f_df['Members'].str.contains(search, case=False)]
+if sel_loc: f_df = f_df[f_df['Location'].isin(sel_loc)]
+if sel_inst: f_df = f_df[f_df['Institution'].isin(sel_inst)]
 
-# --- GLOBE COMPONENT ---
+# --- GLOBE ---
 st.title("Projects for Peace: 2025 Cohort 🌍")
-
 points_json = json.dumps(f_df.mask(f_df.isna(), None).to_dict(orient='records'))
 
 globe_html = f"""
 <div id="globeViz"></div>
-<div id="info-card">
-    <div id="close-btn" onclick="document.getElementById('info-card').style.display='none'">×</div>
+<div id="info-card" style="position: absolute; top: 10px; right: 10px; width: 300px; max-height: 90vh; background: white; border-radius: 12px; display: none; overflow-y: auto; z-index: 100; border: 1px solid #eee; font-family: sans-serif;">
+    <div id="close-btn" onclick="this.parentElement.style.display='none'" style="position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 24px; color: #999;">×</div>
     <div id="card-content"></div>
 </div>
-
 <script src="//unpkg.com/globe.gl"></script>
-<style>
-    body {{ margin: 0; font-family: sans-serif; background: transparent; }}
-    #info-card {{
-        position: absolute; top: 10px; right: 10px; width: 300px; max-height: 90vh;
-        background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-        display: none; overflow-y: auto; z-index: 100; border: 1px solid #eee;
-    }}
-    #close-btn {{ position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 24px; color: #999; }}
-    .c-img {{ width: 100%; border-radius: 12px 12px 0 0; object-fit: cover; height: 160px; }}
-    .c-body {{ padding: 15px; }}
-    .c-title {{ font-weight: bold; font-size: 1.1em; color: #111; margin-bottom: 5px; line-height: 1.2; }}
-    .c-school {{ font-size: 0.85em; color: #666; margin-bottom: 10px; }}
-    .c-quote {{ font-size: 0.95em; font-style: italic; color: #333; border-top: 1px solid #eee; padding-top: 10px; }}
-</style>
-
 <script>
-    const data = {points_json};
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .backgroundColor('rgba(0,0,0,0)')
-        .pointsData(data)
+        .pointsData({points_json})
         .pointLat('lat').pointLng('lng').pointColor('Color')
-        .pointRadius(0.8).pointAltitude(0.01)
-        .pointLabel('Title')
-        .onPointHover(point => {{ world.controls().autoRotate = !point; }})
+        .pointRadius(0.8).pointAltitude(0.01).pointLabel('Title')
+        .onPointHover(p => world.controls().autoRotate = !p)
         .onPointClick(d => {{
             const card = document.getElementById('info-card');
-            const content = document.getElementById('card-content');
             card.style.display = 'block';
-            const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" class="c-img">` : '';
-            const cleanQuote = (d['Pull Quotes'] || 'No pull quote provided.').replace(/^"|"$/g, '');
-
-            content.innerHTML = `
+            const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" style="width:100%; height:160px; object-fit:cover; border-radius:12px 12px 0 0;">` : '';
+            document.getElementById('card-content').innerHTML = `
                 ${{img}}
-                <div class="c-body">
-                    <div class="c-title">${{d.Title}}</div>
-                    <div class="c-school">${{d.Institution}} | ${{d.Location}}</div>
-                    <div class="c-quote">"${{cleanQuote}}"</div>
-                </div>
-            `;
+                <div style="padding:15px;">
+                    <div style="font-weight:bold; font-size:1.1em; color:#111; margin-bottom:5px;">${{d.Title}}</div>
+                    <div style="font-size:0.85em; color:#666; margin-bottom:10px;">${{d.Institution}} | ${{d.Location}}</div>
+                    <div style="font-size:0.95em; font-style:italic; color:#333; border-top:1px solid #eee; padding-top:10px;">"${{(d['Pull Quotes'] || '').replace(/^"|"$/g, '')}}"</div>
+                </div>`;
         }});
-    
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.6;
 </script>
+<style>body{{margin:0;}} #globeViz{{width:100%; height:600px;}}</style>
 """
 components.html(globe_html, height=600)
 
-# --- DETAILED LIST VIEW ---
+# --- GALLERY ---
 st.write("---")
 st.subheader("📖 Project Gallery")
-
 if f_df.empty:
-    st.warning("No projects match your search criteria.")
+    st.warning("No projects match.")
 else:
     for _, row in f_df.iterrows():
-        display_quote = str(row['Pull Quotes']).strip('"')
         with st.expander(f"📍 {row['Title']} ({row['Institution']})"):
             c1, c2 = st.columns([2, 1])
             with c1:
-                st.markdown(f"**Location:** {row['Location']}")
-                st.markdown(f"**Team:** {row['Members']}")
-                st.markdown(f"**Focus:** {', '.join(row['Issues'])}")
-                st.markdown(f"**Approach:** {', '.join(row['Approaches'])}")
-                st.info(f"*{display_quote}*")
+                st.write(f"**Location:** {row['Location']}")
+                st.write(f"**Team:** {row['Members']}")
+                st.info(f"*{str(row['Pull Quotes']).strip('\"')}*")
+                st.write(row['Quote'])
             with c2:
-                # FIXED: Using Base64 here instead of imagePath to prevent AttributeError
                 if row['imageBase64']:
-                    st.image(row['imageBase64'], use_container_width=True)
+                    # BYPASSING st.image: Using raw HTML to display the base64 string safely
+                    st.markdown(f'<img src="{row["imageBase64"]}" style="width:100%; border-radius:10px;">', unsafe_allow_html=True)
                 else:
                     st.caption("No image available.")
-            
-            st.write("---")
-            st.write("**The Full Story:**")
-            st.write(row['Quote'])
