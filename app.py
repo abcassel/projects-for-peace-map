@@ -207,9 +207,9 @@ globe_html = f"""
                 ${{img}}
                 <div style="padding:15px;">
                     <div style="font-weight:bold; font-size:1.1em; color:#111; margin-bottom:5px;">${{d.Title}}</div>
-                    <div style="font-size:0.85em; font-weight:bold; color:\${{d.Color}}; margin-bottom:10px;">\${{d.Year}} Cohort | \${{d.Institution}}</div>
-                    <div style="font-size:0.85em; color:#666; margin-bottom:10px;">\${{locationText}}</div>
-                    <div style="font-size:0.95em; font-style:italic; color:#333; border-top:1px solid #eee; padding-top:10px;">\${{cleanQuote}}</div>
+                    <div style="font-size:0.85em; font-weight:bold; color:${{d.Color}}; margin-bottom:10px;">${{d.Year}} Cohort | ${{d.Institution}}</div>
+                    <div style="font-size:0.85em; color:#666; margin-bottom:10px;">${{locationText}}</div>
+                    <div style="font-size:0.95em; font-style:italic; color:#333; border-top:1px solid #eee; padding-top:10px;">${{cleanQuote}}</div>
                 </div>`;
         }});
     world.controls().autoRotate = true;
