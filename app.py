@@ -44,7 +44,7 @@ def process_individual_dataframe(file_path, year):
         
     df = pd.read_csv(file_path)
     
-    # Ensure necessary columns exist (prevents crashes if a year's sheet is missing them)
+    # Ensure necessary columns exist
     expected_cols = ['Title', 'Institution', 'Location', 'Coordinates', 'Quote', 'Pull Quotes', 'Members', 'Region', 'ID']
     for col in expected_cols:
         if col not in df.columns:
@@ -105,13 +105,9 @@ def process_individual_dataframe(file_path, year):
 
 @st.cache_data
 def load_all_data():
-    # Process 2025
     df_2025 = process_individual_dataframe('2025 Projects ABC Worksheet - App worksheet.csv', 2025)
-    
-    # Process 2026 
     df_2026 = process_individual_dataframe('2026 Projects ABC Worksheet coordinates - filled.csv', 2026)
     
-    # Combine datasets
     dfs_to_concat = []
     if not df_2025.empty: dfs_to_concat.append(df_2025)
     if not df_2026.empty: dfs_to_concat.append(df_2026)
@@ -132,7 +128,7 @@ with st.sidebar:
     * <span style="color:{YEAR_COLORS[2026]}; font-weight:bold;">●</span> 2026 Cohort
     """, unsafe_allow_html=True)
     
-    st.info("1. Rotate: Auto-spins\n2. Stop: Hover pin\n3. Explore: Click pin")
+    st.info("🌍 Rotate: Click & Drag\n🔍 Explore: Click a pin")
     
     st.subheader("📅 Filter Cohort Year")
     available_years = sorted(df['Year'].unique().tolist()) if not df.empty else [2025, 2026]
@@ -141,7 +137,6 @@ with st.sidebar:
     st.subheader("🔍 Filter Projects")
     search = st.text_input("Search Title or Student Name")
     
-    # Generate lists for filters
     all_locations = sorted([str(x) for x in df['Location'].dropna().unique()]) if not df.empty else []
     all_regions = sorted([str(x) for x in df['Region'].dropna().unique()]) if not df.empty else []
     all_inst = sorted([str(x) for x in df['Institution'].dropna().unique()]) if not df.empty else []
@@ -193,13 +188,11 @@ globe_html = f"""
         .pointsData({points_json})
         .pointLat('lat').pointLng('lng').pointColor('Color')
         .pointRadius(0.8).pointAltitude(0.01).pointLabel('Title')
-        .onPointHover(p => world.controls().autoRotate = !p)
         .onPointClick(d => {{
             const card = document.getElementById('info-card');
             card.style.display = 'block';
             const img = d.imageBase64 ? `<img src="${{d.imageBase64}}" style="width:100%; height:160px; object-fit:cover; border-radius:12px 12px 0 0;">` : '';
             
-            // Handle missing quotes/locations gracefully
             const cleanQuote = d['Pull Quotes'] ? `"${{d['Pull Quotes'].replace(/^"|"$/g, '')}}"` : '';
             const locationText = d.Location ? `📍 ${{d.Location}}` : `📍 ${{d.Region}}`;
 
@@ -212,7 +205,9 @@ globe_html = f"""
                     <div style="font-size:0.95em; font-style:italic; color:#333; border-top:1px solid #eee; padding-top:10px;">${{cleanQuote}}</div>
                 </div>`;
         }});
-    world.controls().autoRotate = true;
+    
+    // Auto-rotate disabled - Globe rotates only on user interaction
+    world.controls().autoRotate = false;
 </script>
 <style>body{{margin:0;}} #globeViz{{width:100%; height:600px;}}</style>
 """
